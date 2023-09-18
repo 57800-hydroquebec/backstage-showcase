@@ -53,7 +53,7 @@
     "@emotion/react": "11.11.1",
     "@emotion/styled": "11.11.0",
     "@immobiliarelabs/backstage-plugin-gitlab": "6.1.0",
-    "plugin-hq-teamcity": "file:../../plugins/hq-teamcity",
+    "plugin-hq-teamcity": "file:../../../plugins/hq-teamcity",
     "@janus-idp/backstage-plugin-analytics-provider-segment": "1.1.1",
     "@janus-idp/backstage-plugin-jfrog-artifactory": "1.1.0",
     "@janus-idp/backstage-plugin-ocm": "3.1.0",
