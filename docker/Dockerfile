@@ -105,7 +105,7 @@ ENV CONTAINER_SOURCE=/opt/app-root/src
 
 WORKDIR $CONTAINER_SOURCE/
 # Upstream only
-COPY --from=cleanup --chown=1001:1001 $CONTAINER_SOURCE/ ./
+COPY --from=cleanup $CONTAINER_SOURCE/ ./
 
 # The fix-permissions script is important when operating in environments that dynamically use a random UID at runtime, such as OpenShift.
 # The upstream backstage image does not account for this and it causes the container to fail at runtime.
