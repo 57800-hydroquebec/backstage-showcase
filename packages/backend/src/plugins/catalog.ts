@@ -9,11 +9,15 @@ import { GitlabDiscoveryEntityProvider } from '@backstage/plugin-catalog-backend
 import { GitlabFillerProcessor } from '@immobiliarelabs/backstage-plugin-gitlab-backend';
 import { KeycloakOrgEntityProvider } from '@janus-idp/backstage-plugin-keycloak-backend';
 import { ManagedClusterProvider } from '@janus-idp/backstage-plugin-ocm-backend';
+import { AapResourceEntityProvider } from '@janus-idp/backstage-plugin-aap-backend';
 import { Router } from 'express';
-import { PluginEnvironment } from '../types';
 import { MicrocksApiEntityProvider } from '@microcks/microcks-backstage-provider';
 import { ThreeScaleApiEntityProvider } from '@janus-idp/backstage-plugin-3scale-backend';
 import { MicrosoftGraphOrgEntityProvider } from '@backstage/plugin-catalog-backend-module-msgraph';
+import {
+  LegacyBackendPluginInstaller,
+  LegacyPluginEnvironment as PluginEnvironment,
+} from '@backstage/backend-plugin-manager';
 
 export default async function createPlugin(
   env: PluginEnvironment,
@@ -35,6 +39,7 @@ export default async function createPlugin(
     env.config.getOptionalBoolean('enabled.threescale') || false;
   const isAzureAdEnabled =
     env.config.getOptionalBoolean('enabled.azureAd') || false;
+  const isAapEnabled = env.config.getOptionalBoolean('enabled.aap') || false;
 
   if (isOcmEnabled) {
     builder.addEntityProvider(
@@ -146,10 +151,33 @@ export default async function createPlugin(
     );
   }
 
+  if (isAapEnabled) {
+    builder.addEntityProvider(
+      AapResourceEntityProvider.fromConfig(env.config, {
+        logger: env.logger,
+        schedule: env.scheduler.createScheduledTaskRunner({
+          frequency: { minutes: 30 },
+          timeout: { minutes: 3 },
+        }),
+      }),
+    );
+  }
+
   builder.setPlaceholderResolver('openapi', jsonSchemaRefPlaceholderResolver);
   builder.setPlaceholderResolver('asyncapi', jsonSchemaRefPlaceholderResolver);
 
   builder.addProcessor(new ScaffolderEntitiesProcessor());
+
+  env.pluginProvider
+    .backendPlugins()
+    .map(p => p.installer)
+    .filter((i): i is LegacyBackendPluginInstaller => i.kind === 'legacy')
+    .forEach(i => {
+      if (i.catalog) {
+        i.catalog(builder, env);
+      }
+    });
+
   const { processingEngine, router } = await builder.build();
   await processingEngine.start();
 

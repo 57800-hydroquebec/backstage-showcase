@@ -16,8 +16,7 @@
 # 1. comment out lines with EXTERNAL_SOURCE=. and CONTAINER_SOURCE=/opt/app-root/src
 # 2. uncomment lines with EXTERNAL_SOURCE and CONTAINER_SOURCE pointing at $REMOTE_SOURCES and $REMOTE_SOURCES_DIR instead (Brew defines these paths)
 # 3. uncomment lines with RUN source .../cachito.env
-# 4. remove python and pip installs from runtime container (not required)
-# 5. add Brew metadata
+# 4. add Brew metadata
 
 # Stage 1 - Build nodejs skeleton
 FROM registry.access.redhat.com/ubi9/nodejs-18:1-70 AS skeleton
@@ -47,9 +46,11 @@ RUN chmod +x $YARN
 # Stage 2 - Install dependencies
 FROM skeleton AS deps
 
+COPY $EXTERNAL_SOURCE_NESTED/dynamic-plugins/ ./dynamic-plugins/
 COPY $EXTERNAL_SOURCE_NESTED/package.json $EXTERNAL_SOURCE_NESTED/yarn.lock ./
 COPY $EXTERNAL_SOURCE_NESTED/packages/app/package.json ./packages/app/package.json
 COPY $EXTERNAL_SOURCE_NESTED/packages/backend/package.json ./packages/backend/package.json
+COPY $EXTERNAL_SOURCE_NESTED/plugins/scalprum-backend/package.json ./plugins/scalprum-backend/package.json
 
 RUN $YARN install --frozen-lockfile --network-timeout 600000
 
@@ -64,6 +65,20 @@ RUN rm app-config.yaml && mv app-config.example.yaml app-config.yaml
 
 # hadolint ignore=DL3059
 RUN $YARN build --filter=backend
+
+# Build dynamic plugins
+RUN $YARN export-dynamic
+RUN $YARN clean-dynamic-sources
+RUN mkdir -p dynamic-plugins-root && \
+    cd dynamic-plugins-root && \
+    rm -Rf * && \
+    for pkg in $CONTAINER_SOURCE/dynamic-plugins/*/dist-dynamic; do \
+      if [ -d $pkg ]; then \
+        archive=$(npm pack $pkg) && \
+        tar -xzf "$archive" && rm "$archive" && \
+        mv package $(echo $archive | sed -e 's:\.tgz$::'); \
+      fi; \
+    done
 
 # Stage 4 - Build the actual backend image and install production dependencies
 FROM skeleton AS cleanup
@@ -81,6 +96,7 @@ RUN tar xzf $TARBALL_PATH/skeleton.tar.gz; tar xzf $TARBALL_PATH/bundle.tar.gz; 
 # Copy app-config files needed in runtime
 # Upstream only
 COPY $EXTERNAL_SOURCE_NESTED/app-config*.yaml ./
+COPY $EXTERNAL_SOURCE_NESTED/dynamic-plugins.default.yaml ./
 
 # Install production dependencies
 # hadolint ignore=DL3059
@@ -90,12 +106,6 @@ RUN $YARN install --frozen-lockfile --production --network-timeout 600000
 FROM registry.access.redhat.com/ubi9/nodejs-18-minimal:1-74 AS runner
 USER 0
 
-# Upstream only - install techdocs dependencies
-RUN microdnf update -y && \
-  microdnf install -y python3 python3-pip && \
-  pip3 install mkdocs-techdocs-core==1.* && \
-  microdnf clean all
-
 # Env vars
 ENV YARN=./.yarn/releases/yarn-1.22.19.cjs
 
@@ -103,9 +113,27 @@ ENV YARN=./.yarn/releases/yarn-1.22.19.cjs
 ENV CONTAINER_SOURCE=/opt/app-root/src
 
 WORKDIR $CONTAINER_SOURCE/
-# Upstream only
-COPY --from=cleanup $CONTAINER_SOURCE/ ./
-RUN chown 1001:1001 ./
+
+# Upstream only - install techdocs dependencies (PyPI source tarballs not required)
+RUN microdnf update -y && \
+  microdnf install -y python3 python3-pip && \
+  pip3 install mkdocs-techdocs-core==1.2.3 && \
+  microdnf clean all
+
+# Upstream only - copy from cleanup stage
+COPY --from=cleanup --chown=1001:1001 $CONTAINER_SOURCE/ ./
+
+# Copy python script used to gather dynamic plugins
+COPY docker/install-dynamic-plugins.py ./
+RUN chmod a+r ./install-dynamic-plugins.py
+
+# Copy embedded dynamic plugins
+COPY --from=build $CONTAINER_SOURCE/dynamic-plugins/ ./dynamic-plugins/
+RUN chmod -R a+r ./dynamic-plugins/
+
+# Copy default dynamic plugins root
+COPY --from=build $CONTAINER_SOURCE/dynamic-plugins-root/ ./dynamic-plugins-root/
+RUN chmod -R a+r ./dynamic-plugins-root/
 
 # The fix-permissions script is important when operating in environments that dynamically use a random UID at runtime, such as OpenShift.
 # The upstream backstage image does not account for this and it causes the container to fail at runtime.

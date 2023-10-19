@@ -17,6 +17,8 @@ import {
   loadBackendConfig,
   notFoundHandler,
   useHotMemoize,
+  createStatusCheckRouter,
+  ServiceBuilder,
 } from '@backstage/backend-common';
 import { TaskScheduler } from '@backstage/backend-tasks';
 import { Config } from '@backstage/config';
@@ -28,6 +30,7 @@ import argocd from './plugins/argocd';
 import auth from './plugins/auth';
 import azureDevOps from './plugins/azure-devops';
 import catalog from './plugins/catalog';
+import events from './plugins/events';
 import gitlab from './plugins/gitlab';
 import jenkins from './plugins/jenkins';
 import kubernetes from './plugins/kubernetes';
@@ -38,16 +41,32 @@ import scaffolder from './plugins/scaffolder';
 import search from './plugins/search';
 import sonarqube from './plugins/sonarqube';
 import techdocs from './plugins/techdocs';
-import { PluginEnvironment } from './types';
+import { metricsHandler } from './metrics';
+import { RequestHandler } from 'express';
+import {
+  PluginManager,
+  BackendPluginProvider,
+  LegacyPluginEnvironment as PluginEnvironment,
+} from '@backstage/backend-plugin-manager';
+import { DefaultEventBroker } from '@backstage/plugin-events-backend';
+import { createRouter as scalprumRouter } from '@internal/plugin-scalprum-backend';
 
-function makeCreateEnv(config: Config) {
+// TODO(davidfestal): The following import is a temporary workaround for a bug
+// in the upstream @backstage/backend-plugin-manager package.
+//
+// It should be removed as soon as the upstream package is fixed and released.
+// see https://github.com/janus-idp/backstage-showcase/pull/600
+import { CommonJSModuleLoader } from './loader/CommonJSModuleLoader';
+
+function makeCreateEnv(config: Config, pluginProvider: BackendPluginProvider) {
   const root = getRootLogger();
   const reader = UrlReaders.default({ logger: root, config });
   const discovery = HostDiscovery.fromConfig(config);
   const cacheManager = CacheManager.fromConfig(config);
   const databaseManager = DatabaseManager.fromConfig(config, { logger: root });
   const tokenManager = ServerTokenManager.fromConfig(config, { logger: root });
-  const taskScheduler = TaskScheduler.fromConfig(config);
+  const taskScheduler = TaskScheduler.fromConfig(config, { databaseManager });
+  const eventBroker = new DefaultEventBroker(root);
 
   const identity = DefaultIdentityClient.create({
     discovery,
@@ -75,6 +94,8 @@ function makeCreateEnv(config: Config) {
       scheduler,
       permissions,
       identity,
+      eventBroker,
+      pluginProvider,
     };
   };
 }
@@ -92,11 +113,27 @@ type AddPlugin = {
   isOptional?: false;
 } & AddPluginBase;
 
+type OptionalPluginOptions = {
+  key?: string;
+  path?: string;
+};
+
 type AddOptionalPlugin = {
   isOptional: true;
   config: Config;
-  options?: { key?: string; path?: string };
+  options?: OptionalPluginOptions;
 } & AddPluginBase;
+
+const OPTIONAL_DYNAMIC_PLUGINS: { [key: string]: OptionalPluginOptions } = {
+  techdocs: {},
+  argocd: {},
+  sonarqube: {},
+  kubernetes: {},
+  'azure-devops': { key: 'enabled.azureDevOps' },
+  jenkins: {},
+  ocm: {},
+  gitlab: {},
+} as const satisfies { [key: string]: OptionalPluginOptions };
 
 async function addPlugin(args: AddPlugin | AddOptionalPlugin): Promise<void> {
   const { isOptional, plugin, apiRouter, createEnv, router, options } = args;
@@ -111,19 +148,68 @@ async function addPlugin(args: AddPlugin | AddOptionalPlugin): Promise<void> {
     );
     apiRouter.use(options?.path ?? `/${plugin}`, await router(pluginEnv));
     console.log(`Using backend plugin ${plugin}...`);
+  } else if (isOptional) {
+    console.log(`Backend plugin ${plugin} is disabled`);
+  }
+}
+
+type AddRouterBase = {
+  isOptional?: boolean;
+  name: string;
+  service: ServiceBuilder;
+  root: string;
+  router: RequestHandler | ReturnType<typeof Router>;
+};
+
+type AddRouterOptional = {
+  isOptional: true;
+  config: Config;
+} & AddRouterBase;
+
+type AddRouter = {
+  isOptional?: false;
+} & AddRouterBase;
+
+async function addRouter(args: AddRouter | AddRouterOptional): Promise<void> {
+  const { isOptional, name, service, root, router } = args;
+
+  const isRouterEnabled =
+    !isOptional || args.config.getOptionalBoolean(`enabled.${name}`) || false;
+
+  if (isRouterEnabled) {
+    console.log(`Adding router ${name} to backend...`);
+    service.addRouter(root, router);
   }
 }
 
 async function main() {
+  const logger = getRootLogger();
   const config = await loadBackendConfig({
     argv: process.argv,
-    logger: getRootLogger(),
+    logger,
   });
-  const createEnv = makeCreateEnv(config);
+  const pluginManager = await PluginManager.fromConfig(
+    config,
+    logger,
+    undefined,
+    new CommonJSModuleLoader(logger),
+  );
+  const createEnv = makeCreateEnv(config, pluginManager);
 
   const appEnv = useHotMemoize(module, () => createEnv('app'));
 
   const apiRouter = Router();
+
+  // Scalprum frontend plugins provider
+  const scalprumEmv = useHotMemoize(module, () => createEnv('scalprum'));
+  apiRouter.use(
+    '/scalprum',
+    await scalprumRouter({
+      logger: scalprumEmv.logger,
+      pluginManager,
+      discovery: scalprumEmv.discovery,
+    }),
+  );
 
   // Required plugins
   await addPlugin({ plugin: 'proxy', apiRouter, createEnv, router: proxy });
@@ -136,6 +222,7 @@ async function main() {
     createEnv,
     router: scaffolder,
   });
+  await addPlugin({ plugin: 'events', apiRouter, createEnv, router: events });
 
   // Optional plugins
   await addPlugin({
@@ -212,13 +299,62 @@ async function main() {
     isOptional: true,
   });
 
+  for (const plugin of pluginManager.backendPlugins()) {
+    if (plugin.installer.kind === 'legacy') {
+      const pluginRouter = plugin.installer.router;
+      if (pluginRouter !== undefined) {
+        let optionals = {};
+        if (pluginRouter.pluginID in OPTIONAL_DYNAMIC_PLUGINS) {
+          optionals = {
+            isOptional: true,
+            config: config,
+            options: OPTIONAL_DYNAMIC_PLUGINS[pluginRouter.pluginID],
+          };
+        }
+        await addPlugin({
+          plugin: pluginRouter.pluginID,
+          apiRouter,
+          createEnv,
+          router: pluginRouter.createPlugin,
+          ...optionals,
+        });
+      }
+    }
+  }
+
   // Add backends ABOVE this line; this 404 handler is the catch-all fallback
   apiRouter.use(notFoundHandler());
 
-  const service = createServiceBuilder(module)
-    .loadConfig(config)
-    .addRouter('/api', apiRouter)
-    .addRouter('', await app(appEnv));
+  const service = createServiceBuilder(module).loadConfig(config);
+
+  // Required routers
+  await addRouter({
+    name: 'api',
+    service,
+    root: '/api',
+    router: apiRouter,
+  });
+  await addRouter({
+    name: 'app',
+    service,
+    root: '',
+    router: await app(appEnv),
+  });
+  await addRouter({
+    name: 'healthcheck',
+    service,
+    root: '',
+    router: await createStatusCheckRouter(appEnv),
+  });
+
+  // Optional routers
+  await addRouter({
+    name: 'metrics',
+    config,
+    service,
+    root: '',
+    router: metricsHandler(),
+  });
 
   await service.start().catch(err => {
     console.log(err);

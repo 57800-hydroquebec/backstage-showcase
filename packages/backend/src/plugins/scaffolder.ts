@@ -4,7 +4,6 @@ import {
   createRouter,
 } from '@backstage/plugin-scaffolder-backend';
 import { Router } from 'express';
-import type { PluginEnvironment } from '../types';
 import { ScmIntegrations } from '@backstage/integration';
 import { createArgoCdResources } from '@roadiehq/scaffolder-backend-argocd';
 import {
@@ -29,6 +28,10 @@ import {
   createJsonJSONataTransformAction,
 } from '@roadiehq/scaffolder-backend-module-utils';
 import { createRunYeomanAction } from '@backstage/plugin-scaffolder-backend-module-yeoman';
+import {
+  LegacyBackendPluginInstaller,
+  LegacyPluginEnvironment as PluginEnvironment,
+} from '@backstage/backend-plugin-manager';
 
 export default async function createPlugin(
   env: PluginEnvironment,
@@ -47,6 +50,16 @@ export default async function createPlugin(
 
   const actions = [
     ...builtInActions,
+    ...env.pluginProvider
+      .backendPlugins()
+      .map(p => p.installer)
+      .filter((i): i is LegacyBackendPluginInstaller => i.kind === 'legacy')
+      .flatMap(({ scaffolder }) => {
+        if (scaffolder) {
+          return scaffolder(env);
+        }
+        return [];
+      }),
     createArgoCdResources(env.config, env.logger),
     createGitlabProjectAccessTokenAction({ integrations: integrations }),
     createGitlabProjectDeployTokenAction({ integrations: integrations }),

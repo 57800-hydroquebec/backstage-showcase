@@ -33,6 +33,8 @@ import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
 import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
 import { UserSettingsPage } from '@backstage/plugin-user-settings';
 import { UnifiedThemeProvider } from '@backstage/theme';
+import LightIcon from '@mui/icons-material/WbSunny';
+import DarkIcon from '@mui/icons-material/Brightness2';
 import { OcmPage } from '@janus-idp/backstage-plugin-ocm';
 import React from 'react';
 import { Route } from 'react-router-dom';
@@ -43,12 +45,14 @@ import { HomePage } from './components/home/HomePage';
 import { LearningPaths } from './components/learningPaths/LearningPathsPage';
 import { SearchPage } from './components/search/SearchPage';
 import { LighthousePage } from '@backstage/plugin-lighthouse';
-import { customTheme } from './themes/theme';
 import {
   configApiRef,
   githubAuthApiRef,
   useApi,
 } from '@backstage/core-plugin-api';
+import { customLightTheme } from './themes/lightTheme';
+import { customDarkTheme } from './themes/darkTheme';
+import { useUpdateTheme } from './hooks/useUpdateTheme';
 
 const app = createApp({
   apis,
@@ -71,12 +75,34 @@ const app = createApp({
   },
   themes: [
     {
-      id: 'default',
-      title: 'Default Theme',
+      id: 'light',
+      title: 'Light Theme',
       variant: 'light',
-      Provider: ({ children }) => (
-        <UnifiedThemeProvider theme={customTheme} children={children} />
-      ),
+      icon: <LightIcon />,
+      Provider: ({ children }) => {
+        const themeColors = useUpdateTheme('light');
+        return (
+          <UnifiedThemeProvider
+            theme={customLightTheme(themeColors)}
+            children={children}
+          />
+        );
+      },
+    },
+    {
+      id: 'dark',
+      title: 'Dark Theme',
+      variant: 'dark',
+      icon: <DarkIcon />,
+      Provider: ({ children }) => {
+        const themeColors = useUpdateTheme('dark');
+        return (
+          <UnifiedThemeProvider
+            theme={customDarkTheme(themeColors)}
+            children={children}
+          />
+        );
+      },
     },
   ],
   components: {
@@ -105,7 +131,7 @@ const app = createApp({
   },
 });
 
-// `routes` and every subsequent child needs to be static JSX, so the router can traverse the three without rendering.
+// `routes` and every subsequent child needs to be static JSX, so the router can traverse the tree without rendering.
 // This is why we can't use a function component here.
 const routes = (
   <FlatRoutes>

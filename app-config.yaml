@@ -7,17 +7,31 @@ app:
       writeKey: ${SEGMENT_WRITE_KEY}
       maskIP: ${SEGMENT_MASK_IP} # prevents IP addresses from being sent if true
       testMode: ${SEGMENT_TEST_MODE} # prevents data from being sent if true
-
+  branding:
+    fullLogo: ${BASE64_EMBEDDED_FULL_LOGO}
+    iconLogo: ${BASE64_EMBEDDED_ICON_LOGO}
+    theme:
+      light:
+        primaryColor: ${PRIMARY_LIGHT_COLOR}
+        headerColor1: ${HEADER_LIGHT_COLOR_1}
+        headerColor2: ${HEADER_LIGHT_COLOR_2}
+        navigationIndicatorColor: ${NAV_INDICATOR_LIGHT_COLOR}
+      dark:
+        primaryColor: ${PRIMARY_DARK_COLOR}
+        headerColor1: ${HEADER_DARK_COLOR_1}
+        headerColor2: ${HEADER_DARK_COLOR_2}
+        navigationIndicatorColor: ${NAV_INDICATOR_DARK_COLOR}
 organization:
   name: My Org
 
 backend:
-  # Used for enabling authentication, secret is shared by all backend plugins
+  # Required for authentication. This secret is shared by all backend plugins.
+  # In development mode a temporary secret is automatically created.
   # See https://backstage.io/docs/auth/service-to-service-auth for
   # information on the format
-  auth:
-    keys:
-      - secret: ${BACKEND_AUTH_SECRET}
+  # auth:
+  #   keys:
+  #     - secret: ${BACKEND_AUTH_SECRET}
   baseUrl: http://localhost:7007
   listen:
     port: 7007
@@ -146,6 +160,16 @@ proxy:
         # For more info on how to generate this token: https://www.dynatrace.com/support/help/dynatrace-api/basics/dynatrace-api-authentication
         Authorization: 'Api-Token ${DYNATRACE_ACCESS_TOKEN}'
 
+    # Plugin: Nexus Repository Manager
+    '/nexus-repository-manager':
+      target: ${NEXUS_REPOSITORY_MANAGER_URL}
+      headers:
+        X-Requested-With: 'XMLHttpRequest'
+        # Uncomment the following line to access a private Nexus Repository Manager using a token
+        # Authorization: 'Bearer <NEXUS_REPOSITORY_MANAGER_TOKEN>'
+      changeOrigin: true
+      # Change to "false" in case of using self hosted Nexus Repository Manager instance with a self-signed certificate
+      secure: ${NEXUS_REPOSITORY_MANAGER_SECURE}
 
 # Reference documentation http://backstage.io/docs/features/techdocs/configuration
 # Note: After experimenting with basic setup, use CI/CD to generate docs
@@ -175,8 +199,8 @@ auth:
     # Plugin: GitHub
     github:
       development:
-        clientId: ${GITHUB_APP_CLIENT_ID}
-        clientSecret: ${GITHUB_APP_CLIENT_SECRET}
+        clientId: ${AUTH_GITHUB_CLIENT_ID}
+        clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
 
 scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
@@ -229,6 +253,12 @@ catalog:
     microsoftGraphOrg:
       default:
         tenantId: ${AZURE_TENANT_ID}
+
+    # Plugin: AAP backend plugin
+    aap:
+      prod:
+        baseUrl: ${AAP_BASE_URL}
+        authorization: ${AAP_AUTH_TOKEN}
 
 # Plugin: Kubernetes, OCM
 kubernetes:
@@ -338,3 +368,8 @@ confluence:
     # While Confluence supports BASIC authentication, using an API token is preferred.
     # See: https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/
     password: ${CONFLUENCE_PASSWORD}
+  metrics: ${METRICS_ENABLED}
+  aap: ${AAP_ENABLED}
+
+dynamicPlugins:
+  rootDirectory: dynamic-plugins-root

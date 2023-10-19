@@ -55,3 +55,7 @@ site
 
 #tekton
 .tekton/quay-credentials.yml
+# Dynamic plugins root content
+dynamic-plugins-root/*
+!dynamic-plugins-root/.gitkeep
+dynamic-plugins/*/dist-dynamic/src

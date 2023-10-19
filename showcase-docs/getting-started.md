@@ -47,6 +47,8 @@ The easiest and fastest method for getting started: Backstage Showcase app, runn
      - `${GITLAB_ENABLED}` Set to `true` to enable the GitLab Entity backend plugin.
      - `${AZURE_ENABLED}` Set to `true` to enable the Azure DevOps Entity backend plugin.
      - `${JENKINS_ENABLED}` Set to `true` to enable the Jenkins Entity backend plugin.
+     - `${METRICS_ENABLED}` Set to `true` to enable Prometheus metrics (metrics will be available on `http://localhost:7007/metrics`).
+     - `${AAP_ENABLED}` Set to `true` to enable the AAP backend plugin
 
    - Setup the GitHub plugins (GitHub Issues and GitHub Pull Request)
 
@@ -229,30 +231,53 @@ The easiest and fastest method for getting started: Backstage Showcase app, runn
 
      - There are currently three options for sign on providers within the showcase app. The availability of the sign on providers are determined by the variable set under `auth.environment`.
 
-     - To enable the GitHub and Guest sign on providers, add the following to the config file
+     - To enable the GitHub and Guest sign on providers, add the following to the config file and set `clientId` and `clientSecret` to the appropriate values based on your GitHub OAuth App. See G[itHub Authentication Provider](https://backstage.io/docs/auth/github/provider) documentation for more information and all available configuration options.
 
-     ```yaml
-     auth:
-       environment: development
-       providers:
-         github:
-           development:
-             clientId: ${GITHUB_APP_CLIENT_ID}
-             clientSecret: ${GITHUB_APP_CLIENT_SECRET}
-     ```
+       ```yaml
+       auth:
+         environment: development
+         providers:
+           github:
+             development:
+               clientId: ${AUTH_GITHUB_CLIENT_ID}
+               clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+       ```
 
      - To enable the oauth2Proxy sign on provider, add the following to the config file. GitHub will still need to be included and configured as it is relied on by the GitHub plugins.
 
-     ```yaml
-     auth:
-       environment: production
-       providers:
-         github:
-           production:
-             clientId: ${GITHUB_APP_CLIENT_ID}
-             clientSecret: ${GITHUB_APP_CLIENT_SECRET}
-         oauth2Proxy: {}
-     ```
+       ```yaml
+       auth:
+         environment: production
+         providers:
+           github:
+             production:
+               clientId: ${AUTH_GITHUB_CLIENT_ID}
+               clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+           oauth2Proxy: {}
+       ```
+
+   - Setup the Nexus Repository Manager plugin
+
+     - `${NEXUS_REPOSITORY_MANAGER_URL}`: The URL to the Nexus Repository Manager instance.
+     - `${NEXUS_REPOSITORY_MANAGER_SECURE}`: Change to `false` in case of using self hosted artifactory instance with a self-signed certificate
+     - If using a private Nexus Repository Manager instance, you will need to add an Authorization header for the nexus proxy in your `app-config.yaml` or `app-config.local.yaml`:
+
+       ```yaml
+       '/nexus-repository-manager':
+         target: ${NEXUS_REPOSITORY_MANAGER_URL}
+         headers:
+           X-Requested-With: 'XMLHttpRequest'
+           # Uncomment the following line to access a private Nexus Repository Manager using a token
+           Authorization: 'Bearer ${NEXUS_REPOSITORY_MANAGER_TOKEN}'
+       ```
+
+       - `${NEXUS_REPOSITORY_MANAGER_TOKEN}` (Only for private Nexus Repository Manager instances): Nexus instance API token (see [documentation](https://help.sonatype.com/repomanager3/nexus-repository-administration/user-authentication/user-tokens)) with `nx-repository-view-*-*-read` [permissions](https://help.sonatype.com/repomanager3/nexus-repository-administration/access-control/privileges), or read permissions to view all the repositories you want to display in the plugin.
+
+- Setup the AAP backend plugin
+
+  - This [URL](https://github.com/janus-idp/backstage-plugins/blob/main/plugins/aap-backend/README.md#installation-and-configuration) explains how to use the AAP backend plugin
+  - `${AAP_BASE_URL}`: URL for the Ansible Automation Platform(AAP). Mandatory if plugin is enabled
+  - `${AAP_AUTH_TOKEN}`: Ansible Automation Platform(AAP) [token](https://docs.ansible.com/automation-controller/latest/html/userguide/users.html#users-tokens) with enough permission to read job templates. Mandatory if plugin is enabled (e.g 'Bearer XXXX')
 
 4. Run `yarn install` to install the dependencies
 
@@ -267,3 +292,7 @@ COMING SOON
 ## Deploying with ArgoCD
 
 COMING SOON
+
+## Openshift Logging Integration
+
+[Openshift Logging](https://access.redhat.com/documentation/en-us/openshift_container_platform/4.13/html/logging/index) can be used to monitor Backstage logs. The only requirement is to correctly filter logs in Kibana. A possible filter is using the field `kubernetes.container_name` with operator `is` and value `backstage-backend`.
