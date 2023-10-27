@@ -76,7 +76,8 @@ function getAuthProviderFactory(providerId: string): AuthProviderFactory {
           },
         },
       });
-    case 'github': providers.github.create({
+    case 'github':
+      return providers.github.create({
         signIn: {
           async resolver({ result: { fullProfile } }, ctx) {
             const userId = fullProfile.username;
@@ -90,7 +91,8 @@ function getAuthProviderFactory(providerId: string): AuthProviderFactory {
           },
         },
       });
-      case 'oauth2Proxy': providers.oauth2Proxy.create({
+    case 'oauth2Proxy':
+      return providers.oauth2Proxy.create({
         signIn: {
           async resolver({ result }, ctx) {
             const name = result.getHeader('x-forwarded-preferred-username');
@@ -102,7 +104,7 @@ function getAuthProviderFactory(providerId: string): AuthProviderFactory {
           },
         },
       });
-      case `microsoft`:
+    case `microsoft`:
       return providers.microsoft.create({
         signIn: {
           async resolver({ result: { fullProfile } }, ctx) {
@@ -114,34 +116,34 @@ function getAuthProviderFactory(providerId: string): AuthProviderFactory {
           },
         },
       });
-      default:
-        throw new Error(`No auth provider found for ${providerId}`);
-    }
+    default:
+      throw new Error(`No auth provider found for ${providerId}`);
   }
+}
 export default async function createPlugin(
-    env: PluginEnvironment,
-  ): Promise<Router> {
-    const providersConfig = env.config.getConfig('auth.providers');
-    const authFactories: ProviderFactories = {};
-    providersConfig.keys().forEach(providerId => {
-      const factory = getAuthProviderFactory(providerId);
-      authFactories[providerId] = factory;
-    });
-  
-    const providerFactiories: ProviderFactories = {
-      ...defaultAuthProviderFactories,
-      ...authFactories,
-    };
-    env.logger.info(
-      `Enabled Provider Factories : ${JSON.stringify(providerFactiories)}`,
-    );
-  
-    return await createRouter({
-      logger: env.logger,
-      config: env.config,
-      database: env.database,
-      discovery: env.discovery,
-      tokenManager: env.tokenManager,
-      providerFactories: providerFactiories,
-    });
-  }
+  env: PluginEnvironment,
+): Promise<Router> {
+  const providersConfig = env.config.getConfig('auth.providers');
+  const authFactories: ProviderFactories = {};
+  providersConfig.keys().forEach(providerId => {
+    const factory = getAuthProviderFactory(providerId);
+    authFactories[providerId] = factory;
+  });
+
+  const providerFactiories: ProviderFactories = {
+    ...defaultAuthProviderFactories,
+    ...authFactories,
+  };
+  env.logger.info(
+    `Enabled Provider Factories : ${JSON.stringify(providerFactiories)}`,
+  );
+
+  return await createRouter({
+    logger: env.logger,
+    config: env.config,
+    database: env.database,
+    discovery: env.discovery,
+    tokenManager: env.tokenManager,
+    providerFactories: providerFactiories,
+  });
+}
