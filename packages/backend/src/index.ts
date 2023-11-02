@@ -1,55 +1,38 @@
-/*
- * Hi!
- *
- * Note that this is an EXAMPLE Backstage backend. Please check the README.
- *
- * Happy hacking!
- */
-
 import {
   CacheManager,
   DatabaseManager,
   HostDiscovery,
   ServerTokenManager,
+  ServiceBuilder,
   UrlReaders,
   createServiceBuilder,
+  createStatusCheckRouter,
   getRootLogger,
   loadBackendConfig,
   notFoundHandler,
   useHotMemoize,
-  createStatusCheckRouter,
-  ServiceBuilder,
 } from '@backstage/backend-common';
+import {
+  BackendPluginProvider,
+  LegacyPluginEnvironment as PluginEnvironment,
+  PluginManager,
+} from '@backstage/backend-plugin-manager';
 import { TaskScheduler } from '@backstage/backend-tasks';
 import { Config } from '@backstage/config';
 import { DefaultIdentityClient } from '@backstage/plugin-auth-node';
+import { DefaultEventBroker } from '@backstage/plugin-events-backend';
 import { ServerPermissionClient } from '@backstage/plugin-permission-node';
-import Router from 'express-promise-router';
+import { createRouter as scalprumRouter } from '@internal/plugin-scalprum-backend';
+import { RequestHandler, Router } from 'express';
+import { metricsHandler } from './metrics';
 import app from './plugins/app';
-import argocd from './plugins/argocd';
 import auth from './plugins/auth';
-import azureDevOps from './plugins/azure-devops';
 import catalog from './plugins/catalog';
 import events from './plugins/events';
-import gitlab from './plugins/gitlab';
-import jenkins from './plugins/jenkins';
-import kubernetes from './plugins/kubernetes';
-import ocm from './plugins/ocm';
 import permission from './plugins/permission';
 import proxy from './plugins/proxy';
 import scaffolder from './plugins/scaffolder';
 import search from './plugins/search';
-import sonarqube from './plugins/sonarqube';
-import techdocs from './plugins/techdocs';
-import { metricsHandler } from './metrics';
-import { RequestHandler } from 'express';
-import {
-  PluginManager,
-  BackendPluginProvider,
-  LegacyPluginEnvironment as PluginEnvironment,
-} from '@backstage/backend-plugin-manager';
-import { DefaultEventBroker } from '@backstage/plugin-events-backend';
-import { createRouter as scalprumRouter } from '@internal/plugin-scalprum-backend';
 
 // TODO(davidfestal): The following import is a temporary workaround for a bug
 // in the upstream @backstage/backend-plugin-manager package.
@@ -76,7 +59,7 @@ function makeCreateEnv(config: Config, pluginProvider: BackendPluginProvider) {
     tokenManager,
   });
 
-  root.info(`Created UrlReader ${reader}`);
+  root.info(`Created UrlReader ${JSON.stringify(reader)}`);
 
   return (plugin: string): PluginEnvironment => {
     const logger = root.child({ type: 'plugin', plugin });
@@ -103,9 +86,9 @@ function makeCreateEnv(config: Config, pluginProvider: BackendPluginProvider) {
 type AddPluginBase = {
   isOptional?: boolean;
   plugin: string;
-  apiRouter: ReturnType<typeof Router>;
+  apiRouter: Router;
   createEnv: ReturnType<typeof makeCreateEnv>;
-  router: (env: PluginEnvironment) => Promise<ReturnType<typeof Router>>;
+  router: (env: PluginEnvironment) => Promise<Router>;
   options?: { path?: string };
 };
 
@@ -158,7 +141,7 @@ type AddRouterBase = {
   name: string;
   service: ServiceBuilder;
   root: string;
-  router: RequestHandler | ReturnType<typeof Router>;
+  router: RequestHandler | Router;
 };
 
 type AddRouterOptional = {
@@ -223,80 +206,11 @@ async function main() {
     router: scaffolder,
   });
   await addPlugin({ plugin: 'events', apiRouter, createEnv, router: events });
-
-  // Optional plugins
-  await addPlugin({
-    plugin: 'ocm',
-    config,
-    apiRouter,
-    createEnv,
-    router: ocm,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'techdocs',
-    config,
-    apiRouter,
-    createEnv,
-    router: techdocs,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'argocd',
-    config,
-    apiRouter,
-    createEnv,
-    router: argocd,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'sonarqube',
-    config,
-    apiRouter,
-    createEnv,
-    router: sonarqube,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'kubernetes',
-    config,
-    apiRouter,
-    createEnv,
-    router: kubernetes,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'gitlab',
-    config,
-    apiRouter,
-    createEnv,
-    router: gitlab,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'azure-devops',
-    config,
-    apiRouter,
-    createEnv,
-    router: azureDevOps,
-    isOptional: true,
-    options: { key: 'enabled.azureDevOps' },
-  });
-  await addPlugin({
-    plugin: 'jenkins',
-    config,
-    apiRouter,
-    createEnv,
-    router: jenkins,
-    isOptional: true,
-  });
   await addPlugin({
     plugin: 'permission',
-    config,
     apiRouter,
     createEnv,
     router: permission,
-    isOptional: true,
   });
 
   for (const plugin of pluginManager.backendPlugins()) {
@@ -335,12 +249,6 @@ async function main() {
     router: apiRouter,
   });
   await addRouter({
-    name: 'app',
-    service,
-    root: '',
-    router: await app(appEnv),
-  });
-  await addRouter({
     name: 'healthcheck',
     service,
     root: '',
@@ -355,7 +263,12 @@ async function main() {
     root: '',
     router: metricsHandler(),
   });
-
+  await addRouter({
+    name: 'app',
+    service,
+    root: '',
+    router: await app(appEnv),
+  });
   await service.start().catch(err => {
     console.log(err);
     process.exit(1);

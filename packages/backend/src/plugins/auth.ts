@@ -15,17 +15,6 @@ import {
   AuthResolverContext,
 } from '@backstage/plugin-auth-node';
 
-// export default async function createPlugin(
-//   env: PluginEnvironment,
-// ): Promise<Router> {
-//   return await createRouter({
-//     logger: env.logger,
-//     config: env.config,
-//     database: env.database,
-//     discovery: env.discovery,
-//     tokenManager: env.tokenManager,
-//     providerFactories: {
-//       ...defaultAuthProviderFactories,
 /**
  * Function is responsible for signing in a user with the catalog user and
  * creating an entity reference based on the provided name parameter.
@@ -86,12 +75,18 @@ function getAuthProviderFactory(providerId: string): AuthProviderFactory {
                 `GitHub user profile does not contain a username`,
               );
             }
-
             return await signInWithCatalogUserOptional(userId, ctx);
           },
         },
       });
-    case 'oauth2Proxy':
+    case 'google':
+      return providers.google.create({
+        signIn: {
+          resolver:
+            providers.google.resolvers.emailLocalPartMatchingUserEntityName(),
+        },
+      });
+    case `oauth2Proxy`:
       return providers.oauth2Proxy.create({
         signIn: {
           async resolver({ result }, ctx) {
@@ -99,7 +94,6 @@ function getAuthProviderFactory(providerId: string): AuthProviderFactory {
             if (!name) {
               throw new Error('Request did not contain a user');
             }
-
             return await signInWithCatalogUserOptional(name, ctx);
           },
         },

@@ -1,17 +1,15 @@
 import { useHotCleanup } from '@backstage/backend-common';
+import {
+  LegacyBackendPluginInstaller,
+  LegacyPluginEnvironment as PluginEnvironment,
+} from '@backstage/backend-plugin-manager';
+import { DefaultCatalogCollatorFactory } from '@backstage/plugin-catalog-backend';
 import { createRouter } from '@backstage/plugin-search-backend';
 import {
   IndexBuilder,
   LunrSearchEngine,
 } from '@backstage/plugin-search-backend-node';
-import { DefaultCatalogCollatorFactory } from '@backstage/plugin-catalog-backend';
-import { DefaultTechDocsCollatorFactory } from '@backstage/plugin-techdocs-backend';
-import { Router } from 'express';
-import { ConfluenceCollatorFactory } from '@k-phoen/backstage-plugin-confluence-backend';
-import {
-  LegacyBackendPluginInstaller,
-  LegacyPluginEnvironment as PluginEnvironment,
-} from '@backstage/backend-plugin-manager';
+import type { Router } from 'express';
 
 export default async function createPlugin(
   env: PluginEnvironment,
@@ -43,30 +41,6 @@ export default async function createPlugin(
     }),
   });
 
-  // collator gathers entities from techdocs.
-  indexBuilder.addCollator({
-    schedule,
-    factory: DefaultTechDocsCollatorFactory.fromConfig(env.config, {
-      discovery: env.discovery,
-      logger: env.logger,
-      tokenManager: env.tokenManager,
-    }),
-  });
-
-  // Confluence indexing
-  const halfHourSchedule = env.scheduler.createScheduledTaskRunner({
-    frequency: { minutes: 30 },
-    timeout: { minutes: 15 },
-    // A 3 second delay gives the backend server a chance to initialize before
-    // any collators are executed, which may attempt requests against the API.
-    initialDelay: { seconds: 3 },
-  });
-  indexBuilder.addCollator({
-    schedule: halfHourSchedule,
-    factory: ConfluenceCollatorFactory.fromConfig(env.config, {
-      logger: env.logger,
-    }),
-  });
   env.pluginProvider
     .backendPlugins()
     .map(p => p.installer)

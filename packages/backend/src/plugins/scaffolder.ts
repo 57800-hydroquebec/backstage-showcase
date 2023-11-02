@@ -1,37 +1,14 @@
-import { CatalogClient } from '@backstage/catalog-client';
-import {
-  createBuiltinActions,
-  createRouter,
-} from '@backstage/plugin-scaffolder-backend';
-import { Router } from 'express';
-import { ScmIntegrations } from '@backstage/integration';
-import { createArgoCdResources } from '@roadiehq/scaffolder-backend-argocd';
-import {
-  createGitlabProjectAccessTokenAction,
-  createGitlabProjectDeployTokenAction,
-  createGitlabProjectVariableAction,
-  createGitlabGroupEnsureExistsAction,
-} from '@backstage/plugin-scaffolder-backend-module-gitlab';
-import {
-  createZipAction,
-  createSleepAction,
-  createWriteFileAction,
-  createAppendFileAction,
-  createMergeJSONAction,
-  createMergeAction,
-  createParseFileAction,
-  createReplaceInFileAction,
-  createSerializeYamlAction,
-  createSerializeJsonAction,
-  createJSONataAction,
-  createYamlJSONataTransformAction,
-  createJsonJSONataTransformAction,
-} from '@roadiehq/scaffolder-backend-module-utils';
-import { createRunYeomanAction } from '@backstage/plugin-scaffolder-backend-module-yeoman';
 import {
   LegacyBackendPluginInstaller,
   LegacyPluginEnvironment as PluginEnvironment,
 } from '@backstage/backend-plugin-manager';
+import { CatalogClient } from '@backstage/catalog-client';
+import { ScmIntegrations } from '@backstage/integration';
+import {
+  createBuiltinActions,
+  createRouter,
+} from '@backstage/plugin-scaffolder-backend';
+import type { Router } from 'express';
 
 export default async function createPlugin(
   env: PluginEnvironment,
@@ -60,25 +37,6 @@ export default async function createPlugin(
         }
         return [];
       }),
-    createArgoCdResources(env.config, env.logger),
-    createGitlabProjectAccessTokenAction({ integrations: integrations }),
-    createGitlabProjectDeployTokenAction({ integrations: integrations }),
-    createGitlabProjectVariableAction({ integrations: integrations }),
-    createGitlabGroupEnsureExistsAction({ integrations: integrations }),
-    createAppendFileAction(),
-    createJSONataAction(),
-    createJsonJSONataTransformAction(),
-    createMergeAction(),
-    createMergeJSONAction({}),
-    createParseFileAction(),
-    createReplaceInFileAction(),
-    createSerializeJsonAction(),
-    createSerializeYamlAction(),
-    createSleepAction(),
-    createWriteFileAction(),
-    createYamlJSONataTransformAction(),
-    createZipAction(),
-    createRunYeomanAction(),
   ];
 
   return await createRouter({

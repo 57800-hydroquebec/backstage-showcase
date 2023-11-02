@@ -1,5 +1,5 @@
-import { Router } from 'express';
-import { PluginEnvironment } from '../types';
+import type { Router } from 'express';
+import type { PluginEnvironment } from '../types';
 import { PolicyBuilder } from '@janus-idp/backstage-plugin-rbac-backend';
 
 export default async function createPlugin(
@@ -9,8 +9,8 @@ export default async function createPlugin(
     config: env.config,
     logger: env.logger,
     discovery: env.discovery,
-    database: env.database,
     identity: env.identity,
     permissions: env.permissions,
+    tokenManager: env.tokenManager,
   });
 }
