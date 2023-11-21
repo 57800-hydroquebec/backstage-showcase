@@ -16,16 +16,45 @@ import CreateComponentIcon from '@mui/icons-material/AddCircleOutline';
 import AppsIcon from '@mui/icons-material/Apps';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import HomeIcon from '@mui/icons-material/Home';
-import LibraryBooks from '@mui/icons-material/LibraryBooks';
-import MenuIcon from '@mui/icons-material/Menu';
-import MapIcon from '@mui/icons-material/MyLocation';
+import MuiMenuIcon from '@mui/icons-material/Menu';
 import SchoolIcon from '@mui/icons-material/School';
 import SearchIcon from '@mui/icons-material/Search';
-import AssessmentIcon from '@mui/icons-material/Assessment';
+import { makeStyles } from 'tss-react/mui';
 import React, { PropsWithChildren, useContext } from 'react';
 import { SidebarLogo } from './SidebarLogo';
 import DynamicRootContext from '../DynamicRoot/DynamicRootContext';
-import * as MuiIcons from '@mui/icons-material';
+import { useApp } from '@backstage/core-plugin-api';
+
+const useStyles = makeStyles()({
+  sidebarItem: {
+    textDecorationLine: 'none',
+    '&:hover': {
+      textDecorationLine: 'underline',
+    },
+  },
+});
+
+// Backstage does not expose the props object, pulling it from the component argument
+type SidebarItemProps = Parameters<typeof SidebarItem>[0];
+
+const SideBarItemWrapper = (props: SidebarItemProps) => {
+  const {
+    classes: { sidebarItem },
+  } = useStyles();
+  return (
+    <SidebarItem
+      {...props}
+      className={`${sidebarItem}${props.className ?? ''}`}
+    />
+  );
+};
+
+export const MenuIcon = ({ icon }: { icon: string }) => {
+  const app = useApp();
+
+  const Icon = app.getSystemIcon(icon) || (() => null);
+  return <Icon />;
+};
 
 export const Root = ({ children }: PropsWithChildren<{}>) => {
   const { dynamicRoutes } = useContext(DynamicRootContext);
@@ -37,18 +66,25 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarSearchModal />
         </SidebarGroup>
         <SidebarDivider />
-        <SidebarGroup label="Menu" icon={<MenuIcon />}>
+        <SidebarGroup label="Menu" icon={<MuiMenuIcon />}>
           {/* Global nav, not org-specific */}
-          <SidebarItem icon={HomeIcon as any} to="/" text="Home" />
-          <SidebarItem icon={AppsIcon as any} to="catalog" text="Catalog" />
-          <SidebarItem icon={ExtensionIcon as any} to="api-docs" text="APIs" />
-          <SidebarItem icon={LibraryBooks as any} to="docs" text="Docs" />
-          <SidebarItem
+          <SideBarItemWrapper icon={HomeIcon as any} to="/" text="Home" />
+          <SideBarItemWrapper
+            icon={AppsIcon as any}
+            to="catalog"
+            text="Catalog"
+          />
+          <SideBarItemWrapper
+            icon={ExtensionIcon as any}
+            to="api-docs"
+            text="APIs"
+          />
+          <SideBarItemWrapper
             icon={SchoolIcon as any}
             to="learning-paths"
             text="Learning Paths"
           />
-          <SidebarItem
+          <SideBarItemWrapper
             icon={CreateComponentIcon as any}
             to="create"
             text="Create..."
@@ -56,21 +92,11 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           {/* End global nav */}
           <SidebarDivider />
           <SidebarScrollWrapper>
-            <SidebarItem
-              icon={MapIcon as any}
-              to="tech-radar"
-              text="Tech Radar"
-            />
-            <SidebarItem
-              icon={AssessmentIcon as any}
-              to="lighthouse"
-              text="Lighthouse"
-            />
             {dynamicRoutes.map(({ menuItem, path }) => {
               if (menuItem) {
                 return (
-                  <SidebarItem
-                    icon={(MuiIcons as any)[menuItem.icon] as any}
+                  <SideBarItemWrapper
+                    icon={() => <MenuIcon icon={menuItem.icon} />}
                     to={path}
                     text={menuItem.text}
                   />

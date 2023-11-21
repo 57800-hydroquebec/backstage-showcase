@@ -29,7 +29,7 @@ import binascii
 # the dynamic plugins will be installed.
 #
 # Additionally, the MAX_ENTRY_SIZE environment variable can be defined to set
-# the maximum size of a file in the archive (default: 10MB).
+# the maximum size of a file in the archive (default: 20MB).
 #
 # The SKIP_INTEGRITY_CHECK environment variable can be defined with ("true") to skip the integrity check of remote packages
 #
@@ -107,13 +107,12 @@ def verify_package_integrity(plugin: dict, archive: str, working_directory: str)
     openssl_base64_process = subprocess.Popen(["openssl", "base64", "-A"], stdin=openssl_dgst_process.stdout, stdout=subprocess.PIPE)
 
     output, _ = openssl_base64_process.communicate()
-    print(output.decode('utf-8').strip())
     if hash_digest != output.decode('utf-8').strip():
       raise InstallException(f'{package}: The hash of the downloaded package {output.decode("utf-8").strip()} does not match the provided integrity hash {hash_digest} provided in the configuration file')
 
 def main():
     dynamicPluginsRoot = sys.argv[1]
-    maxEntrySize = int(os.environ.get('MAX_ENTRY_SIZE', 10000000))
+    maxEntrySize = int(os.environ.get('MAX_ENTRY_SIZE', 20000000))
     skipIntegrityCheck = os.environ.get("SKIP_INTEGRITY_CHECK", "").lower() == "true"
 
     dynamicPluginsFile = 'dynamic-plugins.yaml'
@@ -150,6 +149,7 @@ def main():
 
     if skipIntegrityCheck:
         print(f"SKIP_INTEGRITY_CHECK has been set to {skipIntegrityCheck}, skipping integrity check of packages")
+
     if 'includes' in content:
         includes = content['includes']
     else:
@@ -216,12 +216,13 @@ def main():
         print('\n======= Installing dynamic plugin', package, flush=True)
 
         package_is_local = package.startswith('./')
+
+        # If package is not local, then integrity check is mandatory
+        if not package_is_local and not skipIntegrityCheck and not 'integrity' in plugin:
+          raise InstallException(f"No integrity hash provided for Package {package}")
+
         if package_is_local:
             package = os.path.join(os.getcwd(), package[2:])
-        else:
-          # If package is not local, then integrity check is mandatory
-          if not skipIntegrityCheck and not plugin['integrity']:
-            raise InstallException(f"No integrity hash provided for Package {package}")
 
         print('\t==> Grabbing package archive through `npm pack`', flush=True)
         completed = subprocess.run(['npm', 'pack', package], capture_output=True, cwd=dynamicPluginsRoot)
@@ -230,7 +231,7 @@ def main():
 
         archive = os.path.join(dynamicPluginsRoot, completed.stdout.decode('utf-8').strip())
 
-        if not package_is_local:
+        if not (package_is_local or skipIntegrityCheck):
           print('\t==> Verifying package integrity', flush=True)
           verify_package_integrity(plugin, archive, dynamicPluginsRoot)
 
@@ -253,7 +254,7 @@ def main():
                     raise InstallException('Zip bomb detected in ' + member.name)
 
                 member.name = member.name.removeprefix('package/')
-                file.extract(member, path=directory)
+                file.extract(member, path=directory, filter='tar')
             elif member.isdir():
                 print('\t\tSkipping directory entry', member.name, flush=True)
             elif member.islnk() or member.issym():
@@ -267,7 +268,7 @@ def main():
                 if not realpath.startswith(directoryRealpath):
                   raise InstallException('NPM package archive contains a link outside of the archive: ' + member.name + ' -> ' + member.linkpath)
 
-                file.extract(member, path=directory)
+                file.extract(member, path=directory, filter='tar')
             else:
               if member.type == tarfile.CHRTYPE:
                   type_str = "character device"

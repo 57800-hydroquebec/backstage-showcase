@@ -52,31 +52,87 @@ export interface Config {
   /** @deepVisibility frontend */
   dynamicPlugins: {
     /** @deepVisibility frontend */
-    frontend: {
+    frontend?: {
       [key: string]: {
-        dynamicRoutes: ({
-          [key: string]: any;
-        } & {
+        dynamicRoutes?: {
           path: string;
-          module: string;
-          importName: string;
-          menuItem: {
+          module?: string;
+          importName?: string;
+          menuItem?: {
             icon: string;
             text: string;
           };
-        })[];
-        routeBindings: {
-          bindTarget: string;
-          bindMap: {
-            [key: string]: string;
+          config: {
+            props?: {
+              [key: string]: string;
+            };
           };
         }[];
-        mountPoints: {
+        routeBindings?: {
+          targets?: {
+            module?: string;
+            importName: string;
+            name?: string;
+          }[];
+          bindings?: {
+            bindTarget: string;
+            bindMap: {
+              [key: string]: string;
+            };
+          }[];
+        };
+        mountPoints?: {
           mountPoint: string;
-          module: string;
+          module?: string;
+          importName?: string;
+          config: {
+            layout?: {
+              [key: string]:
+                | string
+                | {
+                    [key: string]: string;
+                  };
+            };
+            props?: {
+              [key: string]: string;
+            };
+            if?: {
+              allOf?: (
+                | {
+                    [key: string]: string | string[];
+                  }
+                | string
+              )[];
+              anyOf?: (
+                | {
+                    [key: string]: string | string[];
+                  }
+                | string
+              )[];
+              oneOf?: (
+                | {
+                    [key: string]: string | string[];
+                  }
+                | string
+              )[];
+            };
+          };
+        }[];
+        appIcons?: {
+          module?: string;
+          importName?: string;
+          name: string;
+        }[];
+        apiFactories?: {
+          module?: string;
           importName?: string;
         }[];
       };
     };
   };
+  /**
+   * The signInPage provider
+   * @visibility frontend
+   */
+  signInPage?: string;
 }

@@ -21,8 +21,9 @@ app:
         headerColor1: ${HEADER_DARK_COLOR_1}
         headerColor2: ${HEADER_DARK_COLOR_2}
         navigationIndicatorColor: ${NAV_INDICATOR_DARK_COLOR}
+
 organization:
-  name: My Org
+  name: ${ORGANIZATION_NAME}
 
 backend:
   # Required for authentication. This secret is shared by all backend plugins.
@@ -62,46 +63,6 @@ backend:
     connection: ':memory:'
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
 
-integrations:
-  # Plugin: GitHub
-  github:
-    - host: github.com
-      # This is a GitHub App. You can find out how to generate this file, and more information
-      # about setting up the GitHub integration here: https://backstage.io/docs/integrations/github/github-apps
-      apps:
-        # - $include: github-app-backstage-showcase-credentials.yaml
-        - appId: ${GITHUB_APP_APP_ID}
-          webhookUrl: ${GITHUB_APP_WEBHOOK_URL}
-          clientId: ${GITHUB_APP_CLIENT_ID}
-          clientSecret: ${GITHUB_APP_CLIENT_SECRET}
-          webhookSecret: ${GITHUB_APP_WEBHOOK_SECRET}
-          privateKey: |
-            ${GITHUB_APP_PRIVATE_KEY}
-
-  # Plugin: GitLab
-  gitlab:
-    - host: ${GITLAB_HOST}
-      token: ${GITLAB_TOKEN}
-      apiBaseUrl: ${GITLAB_API_BASE_URL}
-
-  # Plugin: Azure DevOps
-  azure:
-    - host: dev.azure.com
-      token: ${AZURE_TOKEN}
-
-  # Plugin: Bitbucket Server
-  bitbucketServer:
-    - host: ${BITBUCKET_SERVER_HOST}
-      apiBaseUrl: ${BITBUCKET_API_BASE_URL}
-      username: ${BITBUCKET_SERVER_USERNAME}
-      password: ${BITBUCKET_SERVER_PASSWORD}
-
-# Plugin: Azure DevOps
-azureDevOps:
-  host: dev.azure.com
-  token: ${AZURE_TOKEN}
-  organization: ${AZURE_ORG}
-
 proxy:
   endpoints:
     # Plugin: Quay
@@ -138,6 +99,16 @@ proxy:
         X-Atlassian-Token: 'no-check'
         User-Agent: ${JIRA_USER_AGENT}
 
+    # Plugin: ACR
+    '/acr/api':
+      target: ${ACR_URL}
+      changeOrigin: true
+      headers:
+        # If you use Bearer Token for authorization, please replace the 'Basic' with 'Bearer' in the following line.
+        Authorization: 'Bearer ${ACR_AUTH_TOKEN}'
+      # Change to "false" in case of using self hosted artifactory instance with a self-signed certificate
+      secure: true
+
     # Plugin: Jfrog Artifactory
     '/jfrog-artifactory/api':
       target: ${ARTIFACTORY_URL}
@@ -171,38 +142,8 @@ proxy:
       # Change to "false" in case of using self hosted Nexus Repository Manager instance with a self-signed certificate
       secure: ${NEXUS_REPOSITORY_MANAGER_SECURE}
 
-# Reference documentation http://backstage.io/docs/features/techdocs/configuration
-# Note: After experimenting with basic setup, use CI/CD to generate docs
-# and an external cloud storage when deploying TechDocs for production use-case.
-# https://backstage.io/docs/features/techdocs/how-to-guides#how-to-migrate-from-techdocs-basic-to-recommended-deployment-approach
-
-# Plugin: TechDocs
-techdocs:
-  builder: ${TECHDOCS_BUILDER_TYPE}
-  generator:
-    runIn: ${TECHDOCS_GENERATOR_TYPE}
-  publisher:
-    type: ${TECHDOCS_PUBLISHER_TYPE}
-    awsS3:
-      bucketName: ${BUCKET_NAME}
-      region: ${BUCKET_REGION_VAULT}
-      endpoint: ${BUCKET_URL}
-      s3ForcePathStyle: true
-      credentials:
-        accessKeyId: ${AWS_ACCESS_KEY_ID}
-        secretAccessKey: ${AWS_SECRET_ACCESS_KEY}
-
-auth:
-  # see https://backstage.io/docs/auth/ to learn about auth providers
-  environment: development
-  providers:
-    # Plugin: GitHub
-    github:
-      development:
-        clientId: ${AUTH_GITHUB_CLIENT_ID}
-        clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
-
 scaffolder:
+  {}
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
 
 catalog:
@@ -373,4 +314,3 @@ confluence:
 
 dynamicPlugins:
   rootDirectory: dynamic-plugins-root
-  frontend: {}
