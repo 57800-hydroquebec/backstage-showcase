@@ -20,7 +20,6 @@ export const dynamicPluginInstaller: BackendDynamicPluginInstaller = {
           },
           async init(/* { config, logger, http }*/) {
             // Create module into search
-
           },
         });
       },
