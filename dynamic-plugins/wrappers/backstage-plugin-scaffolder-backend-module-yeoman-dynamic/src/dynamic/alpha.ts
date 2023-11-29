@@ -19,7 +19,7 @@ export const dynamicPluginInstaller: BackendDynamicPluginInstaller = {
         },
         async init({ scaffolder }) {
           for (const action of [createRunYeomanAction]) {
-            scaffolder.addActions(action({}));
+            scaffolder.addActions(action());
           }
         },
       });

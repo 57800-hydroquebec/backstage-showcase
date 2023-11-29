@@ -4,7 +4,7 @@ import {
   createBackendModule,
 } from '@backstage/backend-plugin-api';
 import { BitbucketServerEntityProvider } from '@backstage/plugin-catalog-backend-module-bitbucket-server';
-import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node';
+import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node/alpha';
 import { loggerToWinstonLogger } from '@backstage/backend-common';
 
 export const dynamicPluginInstaller: BackendDynamicPluginInstaller = {
