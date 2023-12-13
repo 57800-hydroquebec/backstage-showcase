@@ -1,0 +1,4 @@
+gitRepositoryUrl: https://github.com/janus-api-idp/backstage-showcase.git
+gitRevision: main
+imageUrl: image-registry.openshift-image-registry.svc:5000/developer-hub/backstage-showcase:latest
+dockerfilePath: ./docker/Dockerfile

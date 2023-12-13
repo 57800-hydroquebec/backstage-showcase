@@ -1,0 +1,26 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata: 
+  name: devhub-build-initial-run
+  namespace: tekton-tasks
+spec:
+  pipelineRef:
+    name: devhub-build
+  workspaces:
+  - name: shared-data
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  params:
+  - name: gitRepositoryUrl
+    value: {{ .Values.gitRepositoryUrl }}
+  - name: gitRevision
+    value: {{ .Values.gitRevision }}
+  - name: imageUrl
+    value: {{ .Values.imageUrl }}
+  - name: dockerfilePath
+    value: {{ .Values.dockerfilePath }}

@@ -1,0 +1,49 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: devhub-build
+spec:
+  description: | 
+    This pipeline clones a git repo, builds a Docker image with Buildah and
+    pushes it to a registry
+  params:
+  - name: gitRepositoryUrl
+    type: string
+    default: {{ .Values.gitRepositoryUrl }}
+  - name: gitRevision
+    type: string
+    default: {{ .Values.gitRevision }}
+  - name: imageUrl
+    type: string
+    default: {{ .Values.imageUrl }}
+  - name: dockerfilePath
+    type: string
+    default: {{ .Values.dockerfilePath }}
+  workspaces:
+  - name: shared-data
+  tasks:
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      params:
+      - name: url
+        value: $(params.gitRepositoryUrl)
+      - name: revision
+        value: "$(params.gitRevision)"
+      workspaces:
+      - name: output
+        workspace: shared-data
+    - name: build-push
+      runAfter: ["fetch-source"]
+      taskRef:
+        name: buildah
+        kind: ClusterTask
+      workspaces:
+      - name: source
+        workspace: shared-data
+      params:
+      - name: IMAGE
+        value: $(params.imageUrl)
+      - name: DOCKERFILE
+        value: $(params.dockerfilePath)
