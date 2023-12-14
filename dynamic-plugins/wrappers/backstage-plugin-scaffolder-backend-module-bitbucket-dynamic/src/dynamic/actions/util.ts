@@ -102,11 +102,6 @@ export const parseRepoUrl = (
 
   return { host, owner, repo, organization, workspace, project };
 };
-export const isExecutable = (fileMode: number) => {
-  const executeBitMask = 0o000111;
-  const res = fileMode & executeBitMask;
-  return res > 0;
-};
 
 /**
  * This function checks if the required parameters (given as the `params` argument) are present in the URL
