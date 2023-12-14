@@ -199,66 +199,6 @@ const createBranch = async (opts: {
   return await response.json();
 };
 
-const createRepository = async (opts: {
-  project: string;
-  repo: string;
-  description?: string;
-  repoVisibility: 'private' | 'public';
-  defaultBranch: string;
-  authorization: string;
-  apiBaseUrl: string;
-}) => {
-  const {
-    project,
-    repo,
-    description,
-    authorization,
-    repoVisibility,
-    defaultBranch,
-    apiBaseUrl,
-  } = opts;
-
-  let response: Response;
-  const options: RequestInit = {
-    method: 'POST',
-    body: JSON.stringify({
-      name: repo,
-      description: description,
-      defaultBranch: defaultBranch,
-      public: repoVisibility === 'public',
-    }),
-    headers: {
-      Authorization: authorization,
-      'Content-Type': 'application/json',
-    },
-  };
-
-  try {
-    response = await fetch(`${apiBaseUrl}/projects/${project}/repos`, options);
-  } catch (e) {
-    throw new Error(`Unable to create repository, ${e}`);
-  }
-
-  if (response.status !== 201) {
-    throw new Error(
-      `Unable to create repository, ${response.status} ${
-        response.statusText
-      }, ${await response.text()}`,
-    );
-  }
-
-  const r = await response.json();
-  let remoteUrl = '';
-  for (const link of r.links.clone) {
-    if (link.name === 'http') {
-      remoteUrl = link.href;
-    }
-  }
-
-  const repoContentsUrl = `${r.links.self[0].href}`;
-  return { remoteUrl, repoContentsUrl };
-};
-
 /**
  * Creates a BitbucketServer Pull Request action.
  * @public
