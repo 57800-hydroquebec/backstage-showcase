@@ -87,7 +87,7 @@ const createPullRequest = async (opts: {
       data,
     );
   } catch (e) {
-    throw new Error(`Unable to create pull-reqeusts, ${e}`);
+    throw new Error(`Unable to create pull-requests, ${e}`);
   }
 
   if (response.status !== 201) {
@@ -190,7 +190,7 @@ const createBranch = async (opts: {
 
   if (response.status !== 200) {
     throw new Error(
-      `Unable to get branches, ${response.status} ${
+      `Unable to create branch, ${response.status} ${
         response.statusText
       }, ${await response.text()}`,
     );
@@ -366,7 +366,7 @@ export function createPublishBitbucketPRAction(options: {
 
       const apiBaseUrl = integrationConfig.config.apiBaseUrl;
 
-      ctx.logger.error(`Attempting to create branches targetBranch: ${targetBranch}, sourceBranch: ${sourceBranch}`);
+      ctx.logger.info(`Attempting to find branches targetBranch: ${targetBranch}, sourceBranch: ${sourceBranch}`);
 
       const auth = authConfig.token
           ? {
@@ -400,7 +400,7 @@ export function createPublishBitbucketPRAction(options: {
 
       if (!fromRef) {
         // create branch
-        ctx.logger.error(`fromRef undefined creating branch named: ${sourceBranch} lastCommit: ${toRef.latestCommit}`);
+        ctx.logger.info(`source branch not found -> creating branch named: ${sourceBranch} lastCommit: ${toRef.latestCommit}`);
         const latestCommit = toRef.latestCommit;
         
         fromRef = await createBranch({
@@ -413,7 +413,7 @@ export function createPublishBitbucketPRAction(options: {
         });
       }
 
-      ctx.logger.error(`fromRef: ${fromRef}`);
+      ctx.logger.info(`Validating fromRef is defined with value : ${fromRef}`);
 
       const remoteUrl = `https://${host}/scm/${project}/${repo}.git`;
 
