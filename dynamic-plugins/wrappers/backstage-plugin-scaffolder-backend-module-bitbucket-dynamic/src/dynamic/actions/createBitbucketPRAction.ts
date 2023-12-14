@@ -357,7 +357,7 @@ export function createPublishBitbucketPRAction(options: {
 
       const remoteUrl = `https://${host}/scm/${project}/${repo}.git`;
 
-      const commitHash = await commitAndPushBranch({
+      await commitAndPushBranch({
         tempDir: await ctx.createTemporaryDirectory(),
         dir: getRepoSourceDirectory(ctx.workspacePath, undefined),
         remoteUrl,
