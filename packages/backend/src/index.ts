@@ -1,53 +1,66 @@
-/*
- * Hi!
- *
- * Note that this is an EXAMPLE Backstage backend. Please check the README.
- *
- * Happy hacking!
- */
-
+import {
+  createConfigSecretEnumerator,
+  loadBackendConfig,
+  HostDiscovery,
+} from '@backstage/backend-app-api';
 import {
   CacheManager,
   DatabaseManager,
-  HostDiscovery,
   ServerTokenManager,
+  ServiceBuilder,
   UrlReaders,
+  createRootLogger,
   createServiceBuilder,
+  createStatusCheckRouter,
   getRootLogger,
-  loadBackendConfig,
   notFoundHandler,
   useHotMemoize,
 } from '@backstage/backend-common';
+import {
+  BackendPluginProvider,
+  LegacyPluginEnvironment as PluginEnvironment,
+  PluginManager,
+} from '@backstage/backend-plugin-manager';
 import { TaskScheduler } from '@backstage/backend-tasks';
 import { Config } from '@backstage/config';
 import { DefaultIdentityClient } from '@backstage/plugin-auth-node';
+import { DefaultEventBroker } from '@backstage/plugin-events-backend';
 import { ServerPermissionClient } from '@backstage/plugin-permission-node';
-import Router from 'express-promise-router';
+import { createRouter as dynamicPluginsInfoRouter } from '@internal/plugin-dynamic-plugins-info-backend';
+import { createRouter as scalprumRouter } from '@internal/plugin-scalprum-backend';
+import { RequestHandler, Router } from 'express';
+import * as winston from 'winston';
+import { metricsHandler } from './metrics';
 import app from './plugins/app';
-import argocd from './plugins/argocd';
 import auth from './plugins/auth';
-import azureDevOps from './plugins/azure-devops';
 import catalog from './plugins/catalog';
-import gitlab from './plugins/gitlab';
-import jenkins from './plugins/jenkins';
-import kubernetes from './plugins/kubernetes';
-import ocm from './plugins/ocm';
+import events from './plugins/events';
 import permission from './plugins/permission';
 import proxy from './plugins/proxy';
 import scaffolder from './plugins/scaffolder';
 import search from './plugins/search';
-import sonarqube from './plugins/sonarqube';
-import techdocs from './plugins/techdocs';
-import { PluginEnvironment } from './types';
+import {
+  createDynamicPluginsConfigSecretEnumerator,
+  gatherDynamicPluginsSchemas,
+} from './schemas';
 
-function makeCreateEnv(config: Config) {
+// TODO(davidfestal): The following import is a temporary workaround for a bug
+// in the upstream @backstage/backend-plugin-manager package.
+//
+// It should be removed as soon as the upstream package is fixed and released.
+// see https://github.com/janus-idp/backstage-showcase/pull/600
+import { WinstonLogger } from '@backstage/backend-app-api';
+import { CommonJSModuleLoader } from './loader/CommonJSModuleLoader';
+
+function makeCreateEnv(config: Config, pluginProvider: BackendPluginProvider) {
   const root = getRootLogger();
   const reader = UrlReaders.default({ logger: root, config });
   const discovery = HostDiscovery.fromConfig(config);
   const cacheManager = CacheManager.fromConfig(config);
   const databaseManager = DatabaseManager.fromConfig(config, { logger: root });
   const tokenManager = ServerTokenManager.fromConfig(config, { logger: root });
-  const taskScheduler = TaskScheduler.fromConfig(config);
+  const taskScheduler = TaskScheduler.fromConfig(config, { databaseManager });
+  const eventBroker = new DefaultEventBroker(root);
 
   const identity = DefaultIdentityClient.create({
     discovery,
@@ -57,7 +70,8 @@ function makeCreateEnv(config: Config) {
     tokenManager,
   });
 
-  root.info(`Created UrlReader ${reader}`);
+  // UrlReader has a toString method
+  root.info(`Created UrlReader ${reader}`); // NOSONAR
 
   return (plugin: string): PluginEnvironment => {
     const logger = root.child({ type: 'plugin', plugin });
@@ -75,150 +89,245 @@ function makeCreateEnv(config: Config) {
       scheduler,
       permissions,
       identity,
+      eventBroker,
+      pluginProvider,
     };
   };
 }
 
-type AddPluginBase = {
-  isOptional?: boolean;
+async function addPlugin(args: {
   plugin: string;
-  apiRouter: ReturnType<typeof Router>;
+  apiRouter: Router;
   createEnv: ReturnType<typeof makeCreateEnv>;
-  router: (env: PluginEnvironment) => Promise<ReturnType<typeof Router>>;
-  options?: { path?: string };
-};
+  router: (env: PluginEnvironment) => Promise<Router>;
+  logger: winston.Logger;
+}): Promise<void> {
+  const { plugin, apiRouter, createEnv, router, logger } = args;
 
-type AddPlugin = {
-  isOptional?: false;
-} & AddPluginBase;
-
-type AddOptionalPlugin = {
-  isOptional: true;
-  config: Config;
-  options?: { key?: string; path?: string };
-} & AddPluginBase;
-
-async function addPlugin(args: AddPlugin | AddOptionalPlugin): Promise<void> {
-  const { isOptional, plugin, apiRouter, createEnv, router, options } = args;
-
-  const isPluginEnabled =
-    !isOptional ||
-    args.config.getOptionalBoolean(options?.key ?? `enabled.${plugin}`) ||
-    false;
-  if (isPluginEnabled) {
-    const pluginEnv: PluginEnvironment = useHotMemoize(module, () =>
-      createEnv(plugin),
-    );
-    apiRouter.use(options?.path ?? `/${plugin}`, await router(pluginEnv));
-    console.log(`Using backend plugin ${plugin}...`);
-  }
+  logger.info(`Adding plugin "${plugin}" to backend...`);
+  const pluginEnv: PluginEnvironment = useHotMemoize(module, () =>
+    createEnv(plugin),
+  );
+  apiRouter.use(`/${plugin}`, await router(pluginEnv));
 }
 
+async function addRouter(args: {
+  name: string;
+  service: ServiceBuilder;
+  root: string;
+  router: RequestHandler | Router;
+  logger: winston.Logger;
+}): Promise<void> {
+  const { name, service, root, router, logger } = args;
+
+  logger.info(`Adding router "${name}" to backend...`);
+  service.addRouter(root, router);
+}
+
+const redacter = WinstonLogger.redacter();
+
 async function main() {
-  const config = await loadBackendConfig({
-    argv: process.argv,
-    logger: getRootLogger(),
+  const logger = createRootLogger({
+    format: winston.format.combine(
+      redacter.format, // We use our own redacter here, in order to add additional secrets for dynamic plugins.
+      process.env.NODE_ENV === 'production'
+        ? winston.format.json()
+        : WinstonLogger.colorFormat(),
+    ),
   });
-  const createEnv = makeCreateEnv(config);
+
+  const { config } = await loadBackendConfig({
+    argv: process.argv,
+  });
+
+  const pluginManager = await PluginManager.fromConfig(
+    config,
+    logger,
+    undefined,
+    new CommonJSModuleLoader(logger),
+  );
+
+  const dynamicPluginsSchemas = await gatherDynamicPluginsSchemas(
+    pluginManager,
+    logger,
+  );
+
+  const secretEnumerator = {
+    staticApplication: await createConfigSecretEnumerator({ logger }),
+    dynamicPlugins: await createDynamicPluginsConfigSecretEnumerator(
+      dynamicPluginsSchemas,
+      logger,
+    ),
+  };
+
+  const addSecretsInRedacter = () => {
+    redacter.add([
+      ...secretEnumerator.staticApplication(config),
+      ...secretEnumerator.dynamicPlugins(config),
+    ]);
+  };
+  addSecretsInRedacter();
+  config.subscribe?.(() => {
+    addSecretsInRedacter();
+  });
+
+  const secrets = [...secretEnumerator.dynamicPlugins(config)];
+  if (secrets.length > 0) {
+    getRootLogger().info(
+      `The following secret related to dynamic plugin should be redacted: ${secrets[0]}`,
+    );
+  }
+
+  const createEnv = makeCreateEnv(config, pluginManager);
 
   const appEnv = useHotMemoize(module, () => createEnv('app'));
 
   const apiRouter = Router();
 
-  // Required plugins
-  await addPlugin({ plugin: 'proxy', apiRouter, createEnv, router: proxy });
-  await addPlugin({ plugin: 'auth', apiRouter, createEnv, router: auth });
-  await addPlugin({ plugin: 'catalog', apiRouter, createEnv, router: catalog });
-  await addPlugin({ plugin: 'search', apiRouter, createEnv, router: search });
+  // Scalprum frontend plugins provider
+  await addPlugin({
+    plugin: 'scalprum',
+    apiRouter,
+    createEnv,
+    router: env =>
+      scalprumRouter({
+        logger: env.logger,
+        pluginManager,
+        discovery: env.discovery,
+      }),
+    logger,
+  });
+
+  // Dynamic plugins info provider
+  await addPlugin({
+    plugin: 'dynamic-plugins-info',
+    apiRouter,
+    createEnv,
+    router: env =>
+      dynamicPluginsInfoRouter({
+        logger: env.logger,
+        pluginManager,
+      }),
+    logger,
+  });
+
+  // Required core plugins
+  await addPlugin({
+    plugin: 'proxy',
+    apiRouter,
+    createEnv,
+    router: proxy,
+    logger,
+  });
+  await addPlugin({
+    plugin: 'auth',
+    apiRouter,
+    createEnv,
+    router: auth,
+    logger,
+  });
+  await addPlugin({
+    plugin: 'catalog',
+    apiRouter,
+    createEnv,
+    router: catalog,
+    logger,
+  });
+  await addPlugin({
+    plugin: 'search',
+    apiRouter,
+    createEnv,
+    router: search,
+    logger,
+  });
   await addPlugin({
     plugin: 'scaffolder',
     apiRouter,
     createEnv,
     router: scaffolder,
-  });
-
-  // Optional plugins
-  await addPlugin({
-    plugin: 'ocm',
-    config,
-    apiRouter,
-    createEnv,
-    router: ocm,
-    isOptional: true,
+    logger,
   });
   await addPlugin({
-    plugin: 'techdocs',
-    config,
+    plugin: 'events',
     apiRouter,
     createEnv,
-    router: techdocs,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'argocd',
-    config,
-    apiRouter,
-    createEnv,
-    router: argocd,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'sonarqube',
-    config,
-    apiRouter,
-    createEnv,
-    router: sonarqube,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'kubernetes',
-    config,
-    apiRouter,
-    createEnv,
-    router: kubernetes,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'gitlab',
-    config,
-    apiRouter,
-    createEnv,
-    router: gitlab,
-    isOptional: true,
-  });
-  await addPlugin({
-    plugin: 'azure-devops',
-    config,
-    apiRouter,
-    createEnv,
-    router: azureDevOps,
-    isOptional: true,
-    options: { key: 'enabled.azureDevOps' },
-  });
-  await addPlugin({
-    plugin: 'jenkins',
-    config,
-    apiRouter,
-    createEnv,
-    router: jenkins,
-    isOptional: true,
+    router: events,
+    logger,
   });
   await addPlugin({
     plugin: 'permission',
-    config,
     apiRouter,
     createEnv,
-    router: permission,
-    isOptional: true,
+    router: env =>
+      permission(env, {
+        getPluginIds: () => [
+          'catalog', // Add the other required static plugins here
+          'scaffolder',
+          'permission',
+          ...(pluginManager
+            .backendPlugins()
+            .map(p => {
+              if (p.installer.kind !== 'legacy') {
+                return undefined;
+              }
+              return p.installer.router?.pluginID;
+            })
+            .filter(p => p !== undefined) as string[]),
+        ],
+      }),
+    logger,
   });
+
+  // Load dynamic plugins
+  for (const plugin of pluginManager.backendPlugins()) {
+    if (plugin.installer.kind === 'legacy') {
+      const pluginRouter = plugin.installer.router;
+      if (pluginRouter !== undefined) {
+        await addPlugin({
+          plugin: pluginRouter.pluginID,
+          apiRouter,
+          createEnv,
+          router: pluginRouter.createPlugin,
+          logger,
+        });
+      }
+    }
+  }
 
   // Add backends ABOVE this line; this 404 handler is the catch-all fallback
   apiRouter.use(notFoundHandler());
 
-  const service = createServiceBuilder(module)
-    .loadConfig(config)
-    .addRouter('/api', apiRouter)
-    .addRouter('', await app(appEnv));
+  const service = createServiceBuilder(module).loadConfig(config);
+
+  // Required core routers
+  await addRouter({
+    name: 'api',
+    service,
+    root: '/api',
+    router: apiRouter,
+    logger,
+  });
+  await addRouter({
+    name: 'healthcheck',
+    service,
+    root: '',
+    router: await createStatusCheckRouter(appEnv),
+    logger,
+  });
+  await addRouter({
+    name: 'metrics',
+    service,
+    root: '',
+    router: metricsHandler(),
+    logger,
+  });
+  await addRouter({
+    name: 'app',
+    service,
+    root: '',
+    router: await app(appEnv, dynamicPluginsSchemas),
+    logger,
+  });
 
   await service.start().catch(err => {
     console.log(err);

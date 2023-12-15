@@ -1,4 +1,4 @@
-# Copyright 2023 Janus Authors
+# Copyright 2023 The Janus IDP Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,12 +29,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
   cancel-in-progress: true
 
-env:
-  REGISTRY: quay.io
-  PASSWORD_KEY: QUAY_TOKEN
-  USERNAME: ${{ vars.QUAY_USERNAME }}
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   ci:
     name: Main Job
@@ -42,12 +36,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
           cache: 'yarn'
@@ -72,27 +66,3 @@ jobs:
       - name: Check Changeset
         run: |
           yarn changeset status --since=origin/main
-
-  docker-build:
-    name: Docker Build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Publish
-        uses: ./.github/actions/docker-build
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ env.USERNAME }}
-          password: ${{ secrets[env.PASSWORD_KEY] }}
-          imageName: ${{ env.IMAGE_NAME }}
-          imageTags: |
-            type=sha
-          push: false

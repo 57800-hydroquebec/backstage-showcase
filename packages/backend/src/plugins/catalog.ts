@@ -1,8 +1,8 @@
-import { CatalogBuilder } from '@backstage/plugin-catalog-backend';
 import {
-  GithubEntityProvider,
-  GithubOrgEntityProvider,
-} from '@backstage/plugin-catalog-backend-module-github';
+  LegacyBackendPluginInstaller,
+  LegacyPluginEnvironment as PluginEnvironment,
+} from '@backstage/backend-plugin-manager';
+import { CatalogBuilder } from '@backstage/plugin-catalog-backend';
 import { jsonSchemaRefPlaceholderResolver } from '@backstage/plugin-catalog-backend-module-openapi';
 import { ScaffolderEntitiesProcessor } from '@backstage/plugin-scaffolder-backend';
 import { GitlabDiscoveryEntityProvider } from '@backstage/plugin-catalog-backend-module-gitlab';
@@ -150,6 +150,17 @@ export default async function createPlugin(
   builder.setPlaceholderResolver('asyncapi', jsonSchemaRefPlaceholderResolver);
 
   builder.addProcessor(new ScaffolderEntitiesProcessor());
+
+  env.pluginProvider
+    .backendPlugins()
+    .map(p => p.installer)
+    .filter((i): i is LegacyBackendPluginInstaller => i.kind === 'legacy')
+    .forEach(i => {
+      if (i.catalog) {
+        i.catalog(builder, env);
+      }
+    });
+
   const { processingEngine, router } = await builder.build();
   await processingEngine.start();
 

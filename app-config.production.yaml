@@ -3,6 +3,12 @@ app:
   baseUrl: http://localhost:7007
 
 backend:
+  # Required for authentication. This secret is shared by all backend plugins.
+  # See https://backstage.io/docs/auth/service-to-service-auth for
+  # information on the format
+  # auth:
+  #   keys:
+  #     - secret: ${BACKEND_AUTH_SECRET}
   # Note that the baseUrl should be the URL that the browser and other clients
   # should use when communicating with the backend, i.e. it needs to be
   # reachable not just from within the backend host, but from all of your
@@ -11,7 +17,8 @@ backend:
   baseUrl: http://localhost:7007
   # The listener can also be expressed as a single <host>:<port> string. In this case we bind to
   # all interfaces, the most permissive setting. The right value depends on your specific deployment.
-  listen: ':7007'
+  listen:
+    port: 7007
 
   # config options: https://node-postgres.com/api/client
   database:
@@ -30,9 +37,3 @@ backend:
 
 auth:
   environment: production
-  providers:
-    github:
-      production:
-        clientId: ${GITHUB_APP_CLIENT_ID}
-        clientSecret: ${GITHUB_APP_CLIENT_SECRET}
-    oauth2Proxy: {}

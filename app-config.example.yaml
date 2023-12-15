@@ -1,24 +1,17 @@
 app:
   title: Janus IDP Backstage Showcase
   baseUrl: http://localhost:3000
-  analytics:
-    segment:
-      testMode: true
-      writeKey: temp
 
 organization:
   name: My Org
 
 backend:
-  auth:
-    keys:
-      - secret: temp
   baseUrl: http://localhost:7007
   listen:
     port: 7007
   csp:
     connect-src:
-      - 'self'
+      - "'self'"
       - 'http:'
       - 'https:'
   cors:
@@ -87,6 +80,12 @@ lighthouse:
 
 dynatrace:
   baseUrl: temp
+
+techdocs:
+  builder: external
+
+auth:
+  environment: development
 
 catalog:
   import:

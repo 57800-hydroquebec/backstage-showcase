@@ -1,4 +1,9 @@
 import { useHotCleanup } from '@backstage/backend-common';
+import {
+  LegacyBackendPluginInstaller,
+  LegacyPluginEnvironment as PluginEnvironment,
+} from '@backstage/backend-plugin-manager';
+import { DefaultCatalogCollatorFactory } from '@backstage/plugin-catalog-backend';
 import { createRouter } from '@backstage/plugin-search-backend';
 import {
   IndexBuilder,
@@ -40,15 +45,15 @@ export default async function createPlugin(
     }),
   });
 
-  // collator gathers entities from techdocs.
-  indexBuilder.addCollator({
-    schedule,
-    factory: DefaultTechDocsCollatorFactory.fromConfig(env.config, {
-      discovery: env.discovery,
-      logger: env.logger,
-      tokenManager: env.tokenManager,
-    }),
-  });
+  env.pluginProvider
+    .backendPlugins()
+    .map(p => p.installer)
+    .filter((i): i is LegacyBackendPluginInstaller => i.kind === 'legacy')
+    .forEach(i => {
+      if (i.search) {
+        i.search(indexBuilder, schedule, env);
+      }
+    });
 
   // Confluence indexing
   const halfHourSchedule = env.scheduler.createScheduledTaskRunner({

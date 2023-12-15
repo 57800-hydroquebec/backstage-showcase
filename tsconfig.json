@@ -4,12 +4,14 @@
     "packages/*/src",
     "plugins/*/src",
     "plugins/*/dev",
-    "plugins/*/migrations"
+    "plugins/*/migrations",
+    "dynamic-plugins/wrappers/*/src"
   ],
   "exclude": ["node_modules"],
   "compilerOptions": {
     "outDir": "dist-types",
     "rootDir": ".",
-    "jsx": "react"
+    "jsx": "react",
+    "skipLibCheck": true
   }
 }

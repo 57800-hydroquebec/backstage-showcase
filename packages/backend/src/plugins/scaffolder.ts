@@ -1,4 +1,9 @@
+import {
+  LegacyBackendPluginInstaller,
+  LegacyPluginEnvironment as PluginEnvironment,
+} from '@backstage/backend-plugin-manager';
 import { CatalogClient } from '@backstage/catalog-client';
+import { ScmIntegrations } from '@backstage/integration';
 import {
   createBuiltinActions,
   createRouter,
@@ -47,6 +52,16 @@ export default async function createPlugin(
 
   const actions = [
     ...builtInActions,
+    ...env.pluginProvider
+      .backendPlugins()
+      .map(p => p.installer)
+      .filter((i): i is LegacyBackendPluginInstaller => i.kind === 'legacy')
+      .flatMap(({ scaffolder }) => {
+        if (scaffolder) {
+          return scaffolder(env);
+        }
+        return [];
+      }),
     createArgoCdResources(env.config, env.logger),
     createGitlabProjectAccessTokenAction({ integrations: integrations }),
     createGitlabProjectDeployTokenAction({ integrations: integrations }),

@@ -16,24 +16,20 @@
 # 1. comment out lines with EXTERNAL_SOURCE=. and CONTAINER_SOURCE=/opt/app-root/src
 # 2. uncomment lines with EXTERNAL_SOURCE and CONTAINER_SOURCE pointing at $REMOTE_SOURCES and $REMOTE_SOURCES_DIR instead (Brew defines these paths)
 # 3. uncomment lines with RUN source .../cachito.env
-# 4. remove python and pip installs from runtime container (not required)
-# 5. add Brew metadata
+# 4. add Brew metadata 
 
 # Stage 1 - Build nodejs skeleton
-#@follow_tag(registry.redhat.io/ubi9/nodejs-18:1)
-FROM registry.redhat.io/ubi9/nodejs-18:1 AS builder
+#@follow_tag(registry.access.redhat.com/ubi9/nodejs-18:1)
+FROM registry.access.redhat.com/ubi9/nodejs-18:1-80 AS build
 # hadolint ignore=DL3002
 USER 0
 
 # Install isolated-vm dependencies
 # hadolint ignore=DL3041
 RUN dnf install -y -q --allowerasing --nobest nodejs-devel nodejs-libs \
-  # already installed or installed as deps: 
+  # already installed or installed as deps:
   openssl openssl-devel ca-certificates make cmake cpp gcc gcc-c++ zlib zlib-devel brotli brotli-devel python3 nodejs-packaging && \
   dnf update -y && dnf clean all
-
-# Env vars
-ENV YARN=./.yarn/releases/yarn-1.22.19.cjs
 
 # Downstream sources
 ENV EXTERNAL_SOURCE=$REMOTE_SOURCES/upstream1/app
@@ -41,15 +37,21 @@ ENV EXTERNAL_SOURCE_NESTED=$EXTERNAL_SOURCE/distgit/containers/rhdh-hub
 # /remote-source/
 ENV CONTAINER_SOURCE=$REMOTE_SOURCES_DIR
 
+# Env vars
+ENV YARN=$CONTAINER_SOURCE/.yarn/releases/yarn-1.22.19.cjs
+
 WORKDIR $CONTAINER_SOURCE/
 COPY $EXTERNAL_SOURCE_NESTED/.yarn ./.yarn
 COPY $EXTERNAL_SOURCE_NESTED/.yarnrc.yml ./
 RUN chmod +x $YARN
 
 # Stage 2 - Install dependencies
+COPY $EXTERNAL_SOURCE_NESTED/dynamic-plugins/ ./dynamic-plugins/
 COPY $EXTERNAL_SOURCE_NESTED/package.json $EXTERNAL_SOURCE_NESTED/yarn.lock ./
 COPY $EXTERNAL_SOURCE_NESTED/packages/app/package.json ./packages/app/package.json
 COPY $EXTERNAL_SOURCE_NESTED/packages/backend/package.json ./packages/backend/package.json
+COPY $EXTERNAL_SOURCE_NESTED/plugins/scalprum-backend/package.json ./plugins/scalprum-backend/package.json
+COPY $EXTERNAL_SOURCE_NESTED/plugins/dynamic-plugins-info-backend/package.json ./plugins/dynamic-plugins-info-backend/package.json
 
 # Downstream only - debugging
 # COPY $REMOTE_SOURCES/ ./
@@ -63,9 +65,9 @@ COPY $EXTERNAL_SOURCE_NESTED/packages/backend/package.json ./packages/backend/pa
 # Downstream only - Cachito configuration
 # see https://docs.engineering.redhat.com/pages/viewpage.action?pageId=228017926#UpstreamSources(Cachito,ContainerFirst)-CachitoIntegrationfornpm
 COPY $REMOTE_SOURCES/upstream1/cachito.env \
-     $REMOTE_SOURCES/upstream1/app/registry-ca.pem \
-     $REMOTE_SOURCES/upstream1/app/distgit/containers/rhdh-hub/.npmrc \
-     ./
+  $REMOTE_SOURCES/upstream1/app/registry-ca.pem \
+  $REMOTE_SOURCES/upstream1/app/distgit/containers/rhdh-hub/.npmrc \
+  ./
 # registry=https://cachito-nexus.engineering.redhat.com/repository/cachito-yarn-914335/
 # email=noreply@domain.local
 # always-auth=true
@@ -74,10 +76,11 @@ COPY $REMOTE_SOURCES/upstream1/cachito.env \
 # fetch-retry-factor=2
 # strict-ssl=true
 # cafile="../../../registry-ca.pem"
-# hadolint ignore=SC1091
+# NOTE: this is overridden to "/remote-source/registry-ca.pem" below
+# hadolint ignore=SC1091,SC2046
 RUN \
     # debug
-    # ls -l $CONTAINER_SOURCE/cachito.env; \ 
+    # cat $CONTAINER_SOURCE/cachito.env; \
     # load envs
     source $CONTAINER_SOURCE/cachito.env; \
     \
@@ -87,11 +90,23 @@ RUN \
     # ls -la "${cert_path}"; \
     npm config set cafile "${cert_path}"; $YARN config set cafile "${cert_path}" -g; \
     \
+    # set longer timeouts
+    # npm config set fetch-retry-maxtimeout 6000000; \
+    # npm config set fetch-retry-mintimeout 1000000; \
+    $YARN config set network-timeout 600000 -g; \
+    # set cachito as default registry
+    $YARN config set registry $(npm config get registry) -g; \
+    \
     # debug
     # ls -l /usr/; \
     # set up node dir with common.gypi and unsafe-perms=true
-    ln -s /usr/include/node/common.gypi /usr/common.gypi; $YARN config set nodedir /usr; $YARN config set unsafe-perm true
-    # debug
+    ln -s /usr/include/node/common.gypi /usr/common.gypi; $YARN config set nodedir /usr; $YARN config set unsafe-perm true; \
+    \
+    # add yarn to path via symlink
+    ln -s $CONTAINER_SOURCE/$YARN /usr/local/bin/yarn
+
+# Downstream only - debug
+# RUN echo $PATH; ls -la /usr/local/bin/yarn; whereis yarn;which yarn; yarn --version; \
     # cat $CONTAINER_SOURCE/.npmrc || true; \
     # $YARN config list --verbose; npm config list; npm config list -l
 
@@ -104,41 +119,97 @@ RUN git config --global --add safe.directory ./
 # Upstream only
 # RUN rm app-config.yaml && mv app-config.example.yaml app-config.yaml
 
-# hadolint ignore=DL3059
-RUN $YARN build --filter=backend
+# hadolint ignore=DL3059,DL4006,SC2086
+RUN $YARN build --filter=backend && \
+
+  # Build dynamic plugins: yarn.lock files need to be present in order to transform to point to cachito URLs
+  $YARN --cwd ./dynamic-plugins/imports export-dynamic --no-install && \
+  # Downstream only - replace registry refs with cachito ones
+  cachitoRegistry=$(npm config get registry); echo "cachito registry: $cachitoRegistry"; \
+    for d in $(find . -name yarn.lock); do echo; echo "===== $d ====="; \
+      sed -i $d -r -e "s#(https://registry.yarnpkg.com|https://registry.npmjs.org)#${cachitoRegistry}#g"; \
+      grep resolved $d | head -1; echo "Total $(grep resolved $d | wc -l) resolution lines in $d"; \
+    done; \
+  # Already imported the packages above; need to `yarn install` on the `dist-dynamic` sub-folder for backend plugins
+  $YARN --cwd ./dynamic-plugins/imports install-dynamic && \
+  $YARN export-dynamic -- --filter=./dynamic-plugins/wrappers/* && \
+  $YARN copy-dynamic-plugins dist
+
+# Downstream only - debug
+# hadolint ignore=SC3010,DL4006
+RUN echo "=== Check for yarn.lock files that don't use cachito registry ===>"; \
+    for d in $(find . -name yarn.lock); do \
+      found=$(grep -E "yarnpkg.com|npmjs.org" $d | head -1); \
+      if [[ $found ]]; then echo;echo "$d : $found"; fi; \
+    done; \
+    echo "<=== Check for yarn.lock files that don't use cachito registry ==="
+
+# Downstream only - clean up dynamic plugins sources:
+# Only keep the dist sub-folder in the dynamic-plugins folder
+RUN find dynamic-plugins -maxdepth 1 -mindepth 1 -type d -not -name dist -exec rm -Rf {} \;
 
 # Stage 4 - Build the actual backend image and install production dependencies
 
-# Downstream only - files already exist, nothing to copy - debugging
+# Downstream only - files already exist, nothing to copy; next line for debugging only
 # RUN ls -l $CONTAINER_SOURCE/ $CONTAINER_SOURCE/packages/backend/dist/
+
 ENV TARBALL_PATH=./packages/backend/dist
 RUN tar xzf $TARBALL_PATH/skeleton.tar.gz; tar xzf $TARBALL_PATH/bundle.tar.gz; \
-    rm -f $TARBALL_PATH/skeleton.tar.gz $TARBALL_PATH/bundle.tar.gz
+  rm -f $TARBALL_PATH/skeleton.tar.gz $TARBALL_PATH/bundle.tar.gz
 
 # Copy app-config files needed in runtime
 # Upstream only
 # COPY $EXTERNAL_SOURCE_NESTED/app-config*.yaml ./
+# COPY $EXTERNAL_SOURCE_NESTED/dynamic-plugins.default.yaml ./
 
 # Install production dependencies
 # hadolint ignore=DL3059
 RUN $YARN install --frozen-lockfile --production --network-timeout 600000
 
 # Stage 5 - Build the runner image
-#@follow_tag(registry.redhat.io/ubi9/nodejs-18-minimal:1)
-FROM registry.redhat.io/ubi9/nodejs-18-minimal:1 AS runner
+#@follow_tag(registry.access.redhat.com/ubi9/nodejs-18-minimal:1)
+FROM registry.access.redhat.com/ubi9/nodejs-18-minimal:1-85 AS runner
 USER 0
 
-# Downstream only - do not install techdocs dependencies (not required)
-
-# Env vars
-ENV YARN=./.yarn/releases/yarn-1.22.19.cjs
-
-# Downstream sources
-ENV CONTAINER_SOURCE=$REMOTE_SOURCES_DIR
-
+ENV CONTAINER_SOURCE=/opt/app-root/src
 WORKDIR $CONTAINER_SOURCE/
-# Downstream only - copy from builder, not cleanup stage
-COPY --from=builder --chown=1001:1001 $CONTAINER_SOURCE/ ./
+
+# Downstream only - install techdocs dependencies using cachito sources
+COPY $REMOTE_SOURCES/upstream2 $REMOTE_SOURCES_DIR/upstream2/
+# hadolint ignore=DL3013,DL3041,SC2086
+RUN microdnf update -y && \
+  microdnf install -y python3.11 python3.11-pip python3.11-devel make cmake cpp gcc gcc-c++; \
+  ln -s /usr/bin/pip3.11 /usr/bin/pip3; \
+  ln -s /usr/bin/pip3.11 /usr/bin/pip; \
+  # ls -la $REMOTE_SOURCES_DIR/ $REMOTE_SOURCES_DIR/upstream2/ $REMOTE_SOURCES_DIR/upstream2/app/distgit/containers/rhdh-hub/docker/ || true; \
+  # cat $REMOTE_SOURCES_DIR/upstream2/cachito.env && \
+  # cachito.env contains path to cert:
+  # export PIP_CERT=/remote-source/upstream2/app/package-index-ca.pem
+  source $REMOTE_SOURCES_DIR/upstream2/cachito.env && \
+  # fix ownership for pip install folder
+  mkdir -p /opt/app-root/src/.cache/pip && chown -R root:root /opt/app-root && \
+  # ls -ld /opt/ /opt/app-root /opt/app-root/src/ /opt/app-root/src/.cache /opt/app-root/src/.cache/pip || true; \
+  pushd $REMOTE_SOURCES_DIR/upstream2/app/distgit/containers/rhdh-hub/docker/ >/dev/null && \
+  set -xe; \
+  python3.11 -V; pip3.11 -V; \
+  pip3.11 install --no-cache-dir --upgrade pip setuptools pyyaml; \
+  pip3.11 install --no-cache-dir -r requirements.txt -r requirements-build.txt; mkdocs --version; \
+  popd >/dev/null; \
+  microdnf clean all; rm -fr $REMOTE_SOURCES_DIR/upstream2
+
+# Downstream only - Make python3.11 the default python
+RUN alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Downstream only - copy from build, not cleanup stage
+COPY --from=build --chown=1001:1001 $REMOTE_SOURCES_DIR/ ./
+# Downstream only - copy embedded dynamic plugins from $REMOTE_SOURCES_DIR
+COPY --from=build $REMOTE_SOURCES_DIR/dynamic-plugins/dist/ ./dynamic-plugins/dist/
+
+# Copy script to gather dynamic plugins; copy embedded dynamic plugins to root folder; fix permissions
+COPY docker/install-dynamic-plugins.py docker/install-dynamic-plugins.sh ./
+RUN chmod -R a+r ./dynamic-plugins/ ./install-dynamic-plugins.py; \
+  chmod -R a+rx ./install-dynamic-plugins.sh; \
+  rm -fr dynamic-plugins-root && cp -R dynamic-plugins/dist/ dynamic-plugins-root
 
 # The fix-permissions script is important when operating in environments that dynamically use a random UID at runtime, such as OpenShift.
 # The upstream backstage image does not account for this and it causes the container to fail at runtime.
@@ -146,6 +217,13 @@ RUN fix-permissions ./
 
 # Switch to nodejs user
 USER 1001
+
+# Temporary workaround to avoid triggering issue
+# https://github.com/backstage/backstage/issues/20644
+ENV CHOKIDAR_USEPOLLING='1' CHOKIDAR_INTERVAL='10000'
+
+# To avoid running scripts when using `npm pack` to install dynamic plugins
+ENV NPM_CONFIG_ignore-scripts='true'
 
 ENTRYPOINT ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.example.yaml", "--config", "app-config.example.production.yaml"]
 

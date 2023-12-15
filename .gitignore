@@ -31,6 +31,7 @@ node_modules/
 # Build output
 dist
 dist-types
+dist-scalprum
 
 # Temporary change files created by Vim
 *.swp
@@ -53,5 +54,12 @@ site
 **/cypress/downloads
 **/cypress/screenshots
 
-#tekton
-.tekton/quay-credentials.yml
+# Dynamic plugins root content
+dynamic-plugins-root/*
+!dynamic-plugins-root/.gitkeep
+dynamic-plugins/wrappers/*/dist-dynamic/src
+dynamic-plugins/imports/*/
+dynamic-plugins/*/dist-dynamic/src
+
+#dev caches
+.webpack-cache
