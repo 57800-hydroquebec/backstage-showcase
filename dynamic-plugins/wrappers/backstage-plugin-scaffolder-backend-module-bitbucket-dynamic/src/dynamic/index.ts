@@ -7,6 +7,6 @@ export const dynamicPluginInstaller: BackendDynamicPluginInstaller = {
   scaffolder(env) {
     const integrations = ScmIntegrations.fromConfig(env.config);
     const config = env.config;
-    return [createPublishBitbucketPRAction({integrations, config})];
-  }, 
+    return [createPublishBitbucketPRAction({ integrations, config })];
+  },
 };

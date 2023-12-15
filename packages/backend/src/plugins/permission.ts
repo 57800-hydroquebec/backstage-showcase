@@ -1,5 +1,5 @@
-import type { Router } from 'express';
-import type { PluginEnvironment } from '../types';
+import { Router } from 'express';
+import { PluginEnvironment } from '../types';
 import {
   PolicyBuilder,
   PluginIdProvider,
@@ -14,6 +14,7 @@ export default async function createPlugin(
       config: env.config,
       logger: env.logger,
       discovery: env.discovery,
+      database: env.database,
       identity: env.identity,
       permissions: env.permissions,
       tokenManager: env.tokenManager,

@@ -61,7 +61,9 @@ export const parseRepoUrl = (
   const owner = parsed.searchParams.get('owner') ?? undefined;
   const organization = parsed.searchParams.get('organization') ?? undefined;
   const workspace = parsed.searchParams.get('workspace') ?? undefined;
-  const project = parsed.searchParams.get('project') ?? parsed.pathname.match(/projects\/([^\/]+)/)[1];
+  const project =
+    parsed.searchParams.get('project') ??
+    parsed.pathname.match(/projects\/([^\/]+)/)[1];
 
   const type = integrations.byHost(host)?.type;
 
@@ -71,13 +73,15 @@ export const parseRepoUrl = (
     );
   }
 
-  const repo: string = parsed.searchParams.get('repo') ?? parsed.pathname.match(/repos\/([^\/]+)/)[1];;
+  const repo: string =
+    parsed.searchParams.get('repo') ??
+    parsed.pathname.match(/repos\/([^\/]+)/)[1];
   switch (type) {
     case 'bitbucket': {
       if (host === 'www.bitbucket.org') {
         checkRequiredParams(parsed, 'workspace');
       }
-      
+
       if (!project || !repo) {
         checkRequiredParams(parsed, 'project', 'repo');
       }

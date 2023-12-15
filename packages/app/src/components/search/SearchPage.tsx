@@ -16,6 +16,8 @@ import { makeStyles } from 'tss-react/mui';
 import getMountPointData from '../../utils/dynamicUI/getMountPointData';
 import { MenuIcon } from '../Root/Root';
 
+import { ConfluenceResultListItem } from '@k-phoen/backstage-plugin-confluence';
+
 const useStyles = makeStyles()(theme => ({
   searchBar: {
     borderRadius: '50px',
@@ -62,6 +64,16 @@ export const SearchPage = () => {
                   value: 'software-catalog',
                   name: 'Software Catalog',
                   icon: <CatalogIcon />,
+                },
+                {
+                  value: 'techdocs',
+                  name: 'Documentation',
+                  icon: <DocsIcon />,
+                },
+                {
+                  value: 'confluence',
+                  name: 'Confluence',
+                  icon: <DocsIcon />,
                 },
                 ...getMountPointData<
                   (
@@ -119,6 +131,8 @@ export const SearchPage = () => {
                   />
                 );
               })}
+              <TechDocsSearchResultListItem icon={<DocsIcon />} />
+              <ConfluenceResultListItem />
             </SearchResult>
           </Grid>
         </Grid>

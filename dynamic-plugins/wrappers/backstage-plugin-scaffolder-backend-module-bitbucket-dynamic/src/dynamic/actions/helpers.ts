@@ -22,66 +22,70 @@ import { Logger } from 'winston';
 import fs from 'fs-extra';
 
 export async function commitAndPushBranch({
-    tempDir,
-    dir,
-    remoteUrl,
-    auth,
+  tempDir,
+  dir,
+  remoteUrl,
+  auth,
+  logger,
+  commitMessage,
+  gitAuthorInfo,
+  branch = 'master',
+  remoteRef,
+}: {
+  tempDir: string;
+  dir: string;
+  remoteUrl: string;
+  // For use cases where token has to be used with Basic Auth
+  // it has to be provided as password together with a username
+  // which may be a fixed value defined by the provider.
+  auth: { username: string; password: string } | { token: string };
+  logger: Logger;
+  commitMessage: string;
+  gitAuthorInfo?: { name?: string; email?: string };
+  branch?: string;
+  remoteRef?: string;
+}): Promise<{ commitHash: string }> {
+  const git = Git.fromAuth({
+    ...auth,
     logger,
-    commitMessage,
-    gitAuthorInfo,
-    branch = 'master',
-    remoteRef,
-  }: {
-    tempDir: string;
-    dir: string;
-    remoteUrl: string;
-    // For use cases where token has to be used with Basic Auth
-    // it has to be provided as password together with a username
-    // which may be a fixed value defined by the provider.
-    auth: { username: string; password: string } | { token: string };
-    logger: Logger;
-    commitMessage: string;
-    gitAuthorInfo?: { name?: string; email?: string };
-    branch?: string;
-    remoteRef?: string;
-  }): Promise<{ commitHash: string }> {
-    const git = Git.fromAuth({
-      ...auth,
-      logger,
-    });
+  });
 
-    logger.info(`commitAndPushBranch tempDir:${tempDir} dir:${dir} branch:${branch} remoteUrl:${remoteUrl}`);
-  
-    await git.clone({ url: remoteUrl, dir: tempDir });
-    await git.fetch({ dir: tempDir });
-    await git.checkout({ dir: tempDir, ref: branch });
+  logger.info(
+    `commitAndPushBranch tempDir:${tempDir} dir:${dir} branch:${branch} remoteUrl:${remoteUrl}`,
+  );
 
-    // copy files
-    fs.cpSync(dir, tempDir, {recursive: true, filter: function (path) {
-        return !(path.indexOf('.git') > -1);
-    }});
+  await git.clone({ url: remoteUrl, dir: tempDir });
+  await git.fetch({ dir: tempDir });
+  await git.checkout({ dir: tempDir, ref: branch });
 
-    await git.add({ dir: tempDir, filepath: '.' });
-  
-  
-    // use provided info if possible, otherwise use fallbacks
-    const authorInfo = {
-      name: gitAuthorInfo?.name ?? 'Scaffolder',
-      email: gitAuthorInfo?.email ?? 'scaffolder@backstage.io',
-    };
-  
-    const commitHash = await git.commit({
-      dir: tempDir,
-      message: commitMessage,
-      author: authorInfo,
-      committer: authorInfo,
-    });
-  
-    await git.push({
-      dir: tempDir,
-      remote: 'origin',
-      remoteRef: remoteRef ?? `refs/heads/${branch}`,
-    });
-  
-    return { commitHash };
-  }
+  // copy files
+  fs.cpSync(dir, tempDir, {
+    recursive: true,
+    filter: function (path) {
+      return !(path.indexOf('.git') > -1);
+    },
+  });
+
+  await git.add({ dir: tempDir, filepath: '.' });
+
+  // use provided info if possible, otherwise use fallbacks
+  const authorInfo = {
+    name: gitAuthorInfo?.name ?? 'Scaffolder',
+    email: gitAuthorInfo?.email ?? 'scaffolder@backstage.io',
+  };
+
+  const commitHash = await git.commit({
+    dir: tempDir,
+    message: commitMessage,
+    author: authorInfo,
+    committer: authorInfo,
+  });
+
+  await git.push({
+    dir: tempDir,
+    remote: 'origin',
+    remoteRef: remoteRef ?? `refs/heads/${branch}`,
+  });
+
+  return { commitHash };
+}

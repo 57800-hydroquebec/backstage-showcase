@@ -160,7 +160,8 @@ const createBranch = async (opts: {
   apiBaseUrl: string;
   startPoint: string;
 }) => {
-  const { project, repo, branchName, authorization, apiBaseUrl, startPoint } = opts;
+  const { project, repo, branchName, authorization, apiBaseUrl, startPoint } =
+    opts;
 
   let response: Response;
   const options: RequestInit = {
@@ -179,9 +180,7 @@ const createBranch = async (opts: {
     response = await fetch(
       `${apiBaseUrl}/projects/${encodeURIComponent(
         project,
-      )}/repos/${encodeURIComponent(
-        repo,
-      )}/branches`,
+      )}/repos/${encodeURIComponent(repo)}/branches`,
       options,
     );
   } catch (e) {
@@ -306,20 +305,22 @@ export function createPublishBitbucketPRAction(options: {
 
       const apiBaseUrl = integrationConfig.config.apiBaseUrl;
 
-      ctx.logger.info(`Attempting to find branches targetBranch: ${targetBranch}, sourceBranch: ${sourceBranch}`);
+      ctx.logger.info(
+        `Attempting to find branches targetBranch: ${targetBranch}, sourceBranch: ${sourceBranch}`,
+      );
 
       const auth = authConfig.token
-          ? {
-              token: token!,
-            }
-          : {
-              username: authConfig.username!,
-              password: authConfig.password!,
-            };
-      
+        ? {
+            token: token!,
+          }
+        : {
+            username: authConfig.username!,
+            password: authConfig.password!,
+          };
+
       const gitAuthorInfo = {
-          name: config.getOptionalString('scaffolder.defaultAuthor.name'),
-          email: config.getOptionalString('scaffolder.defaultAuthor.email'),
+        name: config.getOptionalString('scaffolder.defaultAuthor.name'),
+        email: config.getOptionalString('scaffolder.defaultAuthor.email'),
       };
 
       const toRef = await findBranches({
@@ -340,9 +341,11 @@ export function createPublishBitbucketPRAction(options: {
 
       if (!fromRef) {
         // create branch
-        ctx.logger.info(`source branch not found -> creating branch named: ${sourceBranch} lastCommit: ${toRef.latestCommit}`);
+        ctx.logger.info(
+          `source branch not found -> creating branch named: ${sourceBranch} lastCommit: ${toRef.latestCommit}`,
+        );
         const latestCommit = toRef.latestCommit;
-        
+
         fromRef = await createBranch({
           project,
           repo,
@@ -363,7 +366,10 @@ export function createPublishBitbucketPRAction(options: {
         remoteUrl,
         auth,
         logger: ctx.logger,
-        commitMessage: description ?? config.getOptionalString('scaffolder.defaultCommitMessage') ?? "",
+        commitMessage:
+          description ??
+          config.getOptionalString('scaffolder.defaultCommitMessage') ??
+          '',
         gitAuthorInfo,
         branch: sourceBranch,
       });

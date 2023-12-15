@@ -57,6 +57,70 @@ backend:
     connection: ':memory:'
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
 
+integrations:
+  # Plugin: GitHub
+  github:
+    - host: github.com
+      # This is a GitHub App. You can find out how to generate this file, and more information
+      # about setting up the GitHub integration here: https://backstage.io/docs/integrations/github/github-apps
+      apps:
+        # - $include: github-app-backstage-showcase-credentials.yaml
+        - appId: ${GITHUB_APP_APP_ID}
+          webhookUrl: ${GITHUB_APP_WEBHOOK_URL}
+          clientId: ${GITHUB_APP_CLIENT_ID}
+          clientSecret: ${GITHUB_APP_CLIENT_SECRET}
+          webhookSecret: ${GITHUB_APP_WEBHOOK_SECRET}
+          privateKey: |
+            ${GITHUB_APP_PRIVATE_KEY}
+
+  # Plugin: GitLab
+  gitlab:
+    - host: ${GITLAB_HOST}
+      token: ${GITLAB_TOKEN}
+      apiBaseUrl: ${GITLAB_API_BASE_URL}
+
+  # Plugin: Azure DevOps
+  azure:
+    - host: dev.azure.com
+      token: ${AZURE_TOKEN}
+
+# Plugin: Azure DevOps
+azureDevOps:
+  host: dev.azure.com
+  token: ${AZURE_TOKEN}
+  organization: ${AZURE_ORG}
+
+# Reference documentation http://backstage.io/docs/features/techdocs/configuration
+# Note: After experimenting with basic setup, use CI/CD to generate docs
+# and an external cloud storage when deploying TechDocs for production use-case.
+# https://backstage.io/docs/features/techdocs/how-to-guides#how-to-migrate-from-techdocs-basic-to-recommended-deployment-approach
+
+# Plugin: TechDocs
+techdocs:
+  builder: ${TECHDOCS_BUILDER_TYPE}
+  generator:
+    runIn: ${TECHDOCS_GENERATOR_TYPE}
+  publisher:
+    type: ${TECHDOCS_PUBLISHER_TYPE}
+    awsS3:
+      bucketName: ${BUCKET_NAME}
+      region: ${BUCKET_REGION_VAULT}
+      endpoint: ${BUCKET_URL}
+      s3ForcePathStyle: true
+      credentials:
+        accessKeyId: ${AWS_ACCESS_KEY_ID}
+        secretAccessKey: ${AWS_SECRET_ACCESS_KEY}
+
+auth:
+  # see https://backstage.io/docs/auth/ to learn about auth providers
+  environment: development
+  providers:
+    # Plugin: GitHub
+    github:
+      development:
+        clientId: ${GITHUB_APP_CLIENT_ID}
+        clientSecret: ${GITHUB_APP_CLIENT_SECRET}
+
 proxy:
   endpoints:
     # Plugin: Quay
@@ -153,6 +217,95 @@ catalog:
     - type: url
       target: https://github.com/janus-idp/software-templates/blob/main/showcase-templates.yaml
 
+  providers:
+    # Plugin: Keycloak
+    keycloakOrg:
+      default:
+        baseUrl: ${KEYCLOAK_BASE_URL}
+        loginRealm: ${KEYCLOAK_LOGIN_REALM}
+        realm: ${KEYCLOAK_REALM}
+        clientId: ${KEYCLOAK_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+
+    # Plugin: OCM
+    ocm:
+      default:
+        name: ${OCM_HUB_NAME}
+        url: ${OCM_HUB_URL}
+        serviceAccountToken: ${moc_infra_token}
+        owner: janus-authors
+
+    # Plugin: GitHub Org Data
+    githubOrg:
+      default:
+        id: production
+        orgUrl: ${GITHUB_ORG_URL}
+
+    # Plugin: GitHub Discovery
+    # uncomment following lines and set GITHUB_ORG to enable GitHub Discovery
+    # github:
+    #   providerId:
+    #     organization: "${GITHUB_ORG}"
+    
+    # User Group Discovery
+    # See https://backstage.io/docs/integrations/azure/org for more config options
+    microsoftGraphOrg:
+      default:
+        tenantId: ${AZURE_TENANT_ID}
+
+# Plugin: Kubernetes, OCM
+kubernetes:
+  customResources:
+    - group: 'tekton.dev'
+      apiVersion: 'v1beta1'
+      plural: 'pipelines'
+    - group: 'tekton.dev'
+      apiVersion: 'v1beta1'
+      plural: 'pipelineruns'
+    - group: 'tekton.dev'
+      apiVersion: 'v1beta1'
+      plural: 'taskruns'
+    - group: 'route.openshift.io'
+      apiVersion: 'v1'
+      plural: 'routes'
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters:
+        - name: ${K8S_CLUSTER_NAME}
+          url: ${K8S_CLUSTER_URL}
+          authProvider: 'serviceAccount'
+          skipTLSVerify: true
+          serviceAccountToken: ${K8S_CLUSTER_TOKEN}
+
+# Plugin: ArgoCD
+argocd:
+  username: ${ARGOCD_USERNAME}
+  password: ${ARGOCD_PASSWORD}
+  appLocatorMethods:
+    - type: 'config'
+      instances:
+        - name: argoInstance1
+          url: ${ARGOCD_INSTANCE1_URL}
+          token: ${ARGOCD_AUTH_TOKEN}
+        - name: argoInstance2
+          url: ${ARGOCD_INSTANCE2_URL}
+          token: ${ARGOCD_AUTH_TOKEN2}
+
+# Plugin: SonarQube
+sonarqube:
+  baseUrl: ${SONARQUBE_URL}
+  apiKey: ${SONARQUBE_TOKEN}
+
+# Plugin: Jenkins
+jenkins:
+  instances:
+    - name: default
+      baseUrl: ${JENKINS_URL}
+      username: ${JENKINS_USERNAME}
+      apiKey: ${JENKINS_TOKEN}
+
 # Plugin: PagerDuty
 pagerduty:
   # uncomment the following, and provide a URL to override the default URL used for events
@@ -169,6 +322,45 @@ dynatrace:
 # Plugin: Permission
 permission:
   enabled: ${PERMISSION_ENABLED}
+  rbac:
+    admin:
+      users:
+        - name: group:default/admins
+    policies-csv-file: ${RBAC_POLICY_FILE}
+    database:
+      enabled: false
 
 dynamicPlugins:
   rootDirectory: dynamic-plugins-root
+enabled:
+  kubernetes: ${K8S_ENABLED}
+  techdocs: ${TECHDOCS_ENABLED}
+  argocd: ${ARGOCD_ENABLED}
+  sonarqube: ${SONARQUBE_ENABLED}
+  keycloak: ${KEYCLOAK_ENABLED}
+  ocm: ${OCM_ENABLED}
+  github: ${GITHUB_ENABLED}
+  githubOrg: ${GITHUB_ORG_ENABLED}
+  gitlab: ${GITLAB_ENABLED}
+  azureDevOps: ${AZURE_ENABLED}
+  jenkins: ${JENKINS_ENABLED}
+  permission: ${PERMISSION_ENABLED}
+  azureAd: ${AZURE_AD_ENABLED}
+  bitbucketDiscovery: ${BITBUCKET_DISCOVERY_ENABLED}
+
+# Plugin Confluence
+confluence:
+  # Confluence base URL for wiki API
+  # Typically: https://{org-name}.atlassian.net/wiki
+  wikiUrl: ${CONFLUENCE_URL}
+
+  # List of spaces to index
+  # See https://confluence.atlassian.com/conf59/spaces-792498593.html
+  spaces: [ENG]
+
+  # Authentication credentials towards Confluence API
+  auth:
+    username: ${CONFLUENCE_USERNAME}
+    # While Confluence supports BASIC authentication, using an API token is preferred.
+    # See: https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/
+    password: ${CONFLUENCE_PASSWORD}
